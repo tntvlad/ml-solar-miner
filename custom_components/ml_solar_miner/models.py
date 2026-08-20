@@ -8,31 +8,25 @@ import json
 import logging
 import pickle
 import shutil
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-
-try:
-    import numpy as np
-    from sklearn.ensemble import GradientBoostingRegressor
-    from sklearn.metrics import mean_absolute_error
-    from sklearn.model_selection import KFold
-
-    ML_AVAILABLE = True
-except ImportError:
-    ML_AVAILABLE = False
 
 from .const import (
     BATTERY_SOC_CRITICAL,
     BATTERY_SOC_MIN,
     CROSS_VAL_FOLDS,
-    FEATURE_NAMES,
+    DEFAULT_BATTERY_CAPACITY_KWH,
+    GRID_HYSTERESIS_W,
     GRID_IMPORT_REDUCE_W,
     GRID_IMPORT_TOLERANCE,
+    GRID_SIGN_DEFAULT,
     LEGACY_METRICS_FILENAME,
     LEGACY_ML_MODELS_DIR,
     LEGACY_MODEL_FILENAME,
     LEGACY_TRAINING_CSV_FILENAME,
+    LAST_DECISION_FILENAME,
     METRICS_FILENAME,
+    ML_FEATURE_NAMES,
     MIN_SAMPLES_FOR_FORCE,
     MIN_SAMPLES_FOR_TEACHER_ONLY,
     MINER_POWER_MAX,
@@ -40,9 +34,21 @@ from .const import (
     MINER_POWER_STEP,
     ML_DATA_DIR,
     MODEL_FILENAME,
+    MODEL_OBSERVATION_DAYS,
+    REWARD_FLOOR_FOR_TRAINING,
     SUNRISE_HOUR,
     TRAINING_CSV_FILENAME,
+    VIABILITY_FLOOR,
 )
+
+try:
+    import numpy as np
+    from sklearn.ensemble import GradientBoostingRegressor
+    from sklearn.metrics import mean_absolute_error
+
+    ML_AVAILABLE = True
+except ImportError:
+    ML_AVAILABLE = False
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -127,6 +133,10 @@ def _get_metrics_path(hass_config_path) -> Path:
     return _get_data_dir(hass_config_path) / METRICS_FILENAME
 
 
+def _get_last_decision_path(hass_config_path) -> Path:
+    return _get_data_dir(hass_config_path) / LAST_DECISION_FILENAME
+
+
 def clamp_power(raw_power: float) -> int:
     """Clamp miner power to the valid on-range and round down to 100W."""
     clamped = max(MINER_POWER_MIN, min(MINER_POWER_MAX, int(raw_power)))
@@ -159,13 +169,31 @@ def target_soc_from_forecast(forecast_tmrw: float) -> int:
     return 60
 
 
+def apply_grid_sign(grid_power_raw: float, grid_invert: bool = False) -> float:
+    """Apply grid sign convention.
+
+    grid_power_raw is whatever the HA sensor reports.
+    grid_invert=False (default): positive = import from grid (Fronius, most inverters).
+    grid_invert=True:            positive = export to grid  (Victron convention).
+    After this call, positive always means import.
+    """
+    if grid_invert:
+        return -grid_power_raw
+    return grid_power_raw
+
+
 def grid_import_watts(grid_power: float) -> float:
     """Positive watts imported from the grid. Export (negative) is 0."""
     return max(0.0, grid_power)
 
 
 def features_from_state(state: dict) -> list[float]:
-    """Extract ordered feature vector from HA state dictionary."""
+    """Extract ordered feature vector from HA state dictionary.
+
+    The feature list uses ML_FEATURE_NAMES (17 features) — it excludes
+    current_miner_power and miner_is_on so the model cannot simply clone
+    the last decision.
+    """
     hour = float(utc_now().astimezone().hour)
     solar = _as_float(state.get("solar_power_total"), 0)
     soc = _as_float(state.get("battery_soc"), 0)
@@ -195,10 +223,13 @@ def features_from_state(state: dict) -> list[float]:
         house_load,
         _as_float(state.get("forecast_tomorrow"), 0),
         _as_float(state.get("forecast_day3"), 0),
-        _as_float(state.get("grid_power"), 0),
+        grid_import_watts(
+            apply_grid_sign(
+                _as_float(state.get("grid_power"), 0),
+                _as_bool(state.get("grid_invert"), False),
+            )
+        ),
         _as_float(state.get("mining_viability_score"), 0),
-        _as_float(state.get("current_miner_power"), 0),
-        1.0 if _as_bool(state.get("miner_is_on"), False) else 0.0,
     ]
 
 
@@ -288,9 +319,22 @@ def compute_reward(row: dict) -> float:
     return round(reward, 2)
 
 
-def rule_teacher(features: list[float], battery_capacity_kwh: float = 69.6) -> dict:
-    """Rule-based teacher used to bootstrap and as a fallback."""
-    f = dict(zip(FEATURE_NAMES, features))
+def rule_teacher(
+    features: list[float],
+    battery_capacity_kwh: float = DEFAULT_BATTERY_CAPACITY_KWH,
+    prev_miner_active: str = "off",
+) -> dict:
+    """Rule-based teacher used to bootstrap and as a fallback.
+
+    Improvements over v1.0.3:
+    - Grid convention is already applied in features (signed, configurable).
+    - Day mode: uses surplus AFTER house load subtraction; hysteresis at
+      MINER_POWER_MIN boundary prevents on/off chattering.
+    - Night mode: drains against usable kWh (battery_kwh_available), falls
+      back to SoC × capacity only when available data is zero.
+    - Viability: stays off when mining_viability_score < VIABILITY_FLOOR.
+    """
+    f = dict(zip(ML_FEATURE_NAMES, features))
 
     is_daytime = f["is_daytime"]
     hours_to_sunrise = f["hours_until_sunrise"]
@@ -299,7 +343,20 @@ def rule_teacher(features: list[float], battery_capacity_kwh: float = 69.6) -> d
     house_load = f["house_load"]
     forecast_tmrw = f["forecast_tomorrow"]
     grid_import = grid_import_watts(f["grid_power"])
+    viability = f["mining_viability_score"]
+    kwh_available = f["battery_kwh_available"]
 
+    # --- Viability check ---
+    if VIABILITY_FLOOR > 0 and viability < VIABILITY_FLOOR:
+        return {
+            "miner_active": "off",
+            "miner_power": MINER_POWER_MIN,
+            "target_soc_by_sunrise": 30,
+            "mode": "uneconomic",
+            "reason": f"Viability {viability:.2f} below floor {VIABILITY_FLOOR:.2f}",
+        }
+
+    # --- Safety shutdown ---
     if soc < BATTERY_SOC_CRITICAL:
         return {
             "miner_active": "off",
@@ -310,24 +367,48 @@ def rule_teacher(features: list[float], battery_capacity_kwh: float = 69.6) -> d
         }
 
     if is_daytime:
-        available_for_miner = surplus
-        if grid_import > GRID_IMPORT_TOLERANCE:
-            available_for_miner -= grid_import
+        # Day mode: match surplus after house load, with hysteresis
+        available_for_miner = surplus - grid_import
+        if available_for_miner < 0:
+            available_for_miner = 0
 
-        miner_active, decision_power = decide_power(available_for_miner)
+        if prev_miner_active == "on":
+            # Miner already running — keep on until surplus drops below threshold
+            threshold = MINER_POWER_MIN - GRID_HYSTERESIS_W
+            if available_for_miner < threshold:
+                miner_active, decision_power = "off", MINER_POWER_MIN
+            else:
+                miner_active, decision_power = "on", clamp_power(available_for_miner)
+        else:
+            # Miner off — require surplus above threshold to start
+            threshold = MINER_POWER_MIN + GRID_HYSTERESIS_W
+            if available_for_miner < threshold:
+                miner_active, decision_power = "off", MINER_POWER_MIN
+            else:
+                miner_active, decision_power = "on", clamp_power(available_for_miner)
+
         return {
             "miner_active": miner_active,
             "miner_power": decision_power,
             "target_soc_by_sunrise": 30,
             "mode": "day_solar",
             "reason": (
-                f"DAY: Solar available {available_for_miner:.0f}W, "
-                f"miner set to {decision_power}W"
+                f"DAY: Surplus {available_for_miner:.0f}W after load, "
+                f"miner {miner_active} at {decision_power}W"
             ),
         }
 
+    # --- Night drain ---
     target_soc = target_soc_from_forecast(forecast_tmrw)
-    energy_to_drain = ((soc - target_soc) / 100) * battery_capacity_kwh
+
+    # Use real available kWh if present, otherwise fall back to SoC × capacity
+    if kwh_available > 0:
+        usable_kwh = kwh_available
+    else:
+        usable_kwh = (soc / 100.0) * battery_capacity_kwh
+
+    energy_to_drain = max(0.0, usable_kwh - (target_soc / 100.0) * battery_capacity_kwh)
+
     if hours_to_sunrise > 0:
         required_watts = (energy_to_drain * 1000) / hours_to_sunrise
     else:
@@ -342,24 +423,28 @@ def rule_teacher(features: list[float], battery_capacity_kwh: float = 69.6) -> d
         "mode": "night_drain",
         "reason": (
             f"NIGHT: Need {miner_needed:.0f}W to drain {energy_to_drain:.1f}kWh "
-            f"by sunrise (target SoC {target_soc}%)"
+            f"by sunrise (target SoC {target_soc}%, usable {usable_kwh:.1f}kWh)"
         ),
     }
 
 
+# ---------------------------------------------------------------------------
+# Persistence helpers
+# ---------------------------------------------------------------------------
+
 def load_model(hass_config_path) -> tuple:
     """Load trained model from disk. Returns (model, feature_names)."""
     if not ML_AVAILABLE:
-        return None, FEATURE_NAMES
+        return None, ML_FEATURE_NAMES
     model_path = _get_model_path(hass_config_path)
     if not model_path.exists():
-        return None, FEATURE_NAMES
+        return None, ML_FEATURE_NAMES
     try:
         with open(model_path, "rb") as f:
-            return pickle.load(f), FEATURE_NAMES
+            return pickle.load(f), ML_FEATURE_NAMES
     except Exception as err:  # noqa: BLE001 — pickle/sklearn version mismatches
         _LOGGER.warning("Failed to load model %s (%s); using rule teacher", model_path, err)
-        return None, FEATURE_NAMES
+        return None, ML_FEATURE_NAMES
 
 
 def save_model(hass_config_path, model) -> None:
@@ -389,6 +474,25 @@ def load_metrics(hass_config_path) -> dict:
         return {}
 
 
+def save_last_decision(hass_config_path, decision: dict) -> None:
+    """Persist last decision so sensors are not empty until first tick."""
+    path = _get_last_decision_path(hass_config_path)
+    with open(path, "w") as f:
+        json.dump(decision, f, indent=2)
+
+
+def load_last_decision(hass_config_path) -> dict | None:
+    """Load persisted last decision."""
+    path = _get_last_decision_path(hass_config_path)
+    if not path.exists():
+        return None
+    try:
+        with open(path, "r") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
 def log_decision_to_csv(hass_config_path, state: dict, decision: dict) -> None:
     """Append this decision + state to training CSV for future retraining."""
     csv_path = _get_training_csv_path(hass_config_path)
@@ -396,7 +500,7 @@ def log_decision_to_csv(hass_config_path, state: dict, decision: dict) -> None:
     file_exists = csv_path.exists()
     features = features_from_state(state)
 
-    row = {name: val for name, val in zip(FEATURE_NAMES, features)}
+    row = {name: val for name, val in zip(ML_FEATURE_NAMES, features)}
     row["timestamp"] = utc_now_iso()
     row["decision_miner_active"] = decision["miner_active"]
     row["decision_miner_power"] = decision["miner_power"]
@@ -473,6 +577,19 @@ def read_training_data(hass_config_path, live_state: dict | None = None) -> list
     return rows
 
 
+# ---------------------------------------------------------------------------
+# ML training — residual model with time-split validation
+# ---------------------------------------------------------------------------
+
+def sklearn_available() -> bool:
+    """Return True if scikit-learn can be imported."""
+    try:
+        import sklearn  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
 def _make_regressor(n_samples: int):
     if not ML_AVAILABLE:
         raise ImportError("scikit-learn is not installed")
@@ -487,8 +604,22 @@ def _make_regressor(n_samples: int):
     )
 
 
+def _parse_row_timestamp(row: dict) -> datetime | None:
+    """Parse the timestamp from a training row."""
+    return parse_iso_datetime(row.get("timestamp"))
+
+
 def train_model(rows: list[dict], min_samples: int = 50) -> tuple:
-    """Train gradient boosted regressor on historical data.
+    """Train a residual model on historical data.
+
+    The model predicts the RESIDUAL:  y = actual_good_power - teacher_power
+    rather than cloning the last decision.  This lets the model learn *when
+    and how much* to deviate from the rule teacher.
+
+    Validation uses a time split (last MODEL_OBSERVATION_DAYS as test set)
+    instead of shuffled K-fold so we don't leak future into past.
+
+    Only rows with reward >= REWARD_FLOOR_FOR_TRAINING are included.
 
     Returns (model, val_score, top_features, importances).
     """
@@ -498,20 +629,39 @@ def train_model(rows: list[dict], min_samples: int = 50) -> tuple:
             "Install it manually: pip install scikit-learn numpy"
         )
 
-    valid_rows = [r for r in rows if _reward_is_present(r)]
+    valid_rows = [
+        r for r in rows
+        if _reward_is_present(r) and _as_float(r.get("reward"), 0) >= REWARD_FLOOR_FOR_TRAINING
+    ]
     if len(valid_rows) < MIN_SAMPLES_FOR_FORCE:
-        raise ValueError(f"Need at least {MIN_SAMPLES_FOR_FORCE} rewarded rows, have {len(valid_rows)}")
+        raise ValueError(
+            f"Need at least {MIN_SAMPLES_FOR_FORCE} rewarded rows "
+            f"(reward >= {REWARD_FLOOR_FOR_TRAINING}), have {len(valid_rows)}"
+        )
+
+    # Sort by timestamp for time-split
+    valid_rows.sort(key=lambda r: r.get("timestamp", ""))
+
+    # Compute teacher prediction for each row to build residual targets
+    teacher_power = []
+    for row in valid_rows:
+        feat = [_as_float(row.get(name), 0) for name in ML_FEATURE_NAMES]
+        td = rule_teacher(feat)
+        teacher_power.append(float(td["miner_power"]))
 
     X = []
     y = []
     weights = []
-    for row in valid_rows:
-        features = [_as_float(row.get(name), 0) for name in FEATURE_NAMES]
-        power = _as_float(row.get("decision_miner_power"), 3500)
+    for i, row in enumerate(valid_rows):
+        features = [_as_float(row.get(name), 0) for name in ML_FEATURE_NAMES]
+        actual_power = _as_float(row.get("decision_miner_power"), 3500)
         reward = _as_float(row.get("reward"), 0)
 
+        # Residual target: how much better/worse than teacher
+        residual = actual_power - teacher_power[i]
+
         X.append(features)
-        y.append(power)
+        y.append(residual)
         weights.append(max(0.1, 1.0 + reward / 30.0))
 
     X = np.array(X)
@@ -519,24 +669,28 @@ def train_model(rows: list[dict], min_samples: int = 50) -> tuple:
     weights = np.array(weights)
     n_samples = len(X)
 
-    model = _make_regressor(n_samples)
+    # Time-split: last MODEL_OBSERVATION_DAYS as test set
+    cutoff_str = (utc_now() - timedelta(days=MODEL_OBSERVATION_DAYS)).isoformat()
+    test_mask = np.array(
+        [r.get("timestamp", "") >= cutoff_str for r in valid_rows]
+    )
+    train_mask = ~test_mask
 
-    if n_samples >= min_samples and n_samples >= CROSS_VAL_FOLDS:
-        n_folds = min(CROSS_VAL_FOLDS, n_samples)
-        kf = KFold(n_splits=n_folds, shuffle=True, random_state=42)
-        maes: list[float] = []
-        for train_idx, test_idx in kf.split(X):
-            fold = _make_regressor(len(train_idx))
-            fold.fit(X[train_idx], y[train_idx], sample_weight=weights[train_idx])
-            pred = fold.predict(X[test_idx])
-            maes.append(float(mean_absolute_error(y[test_idx], pred)))
-        val_score = float(np.mean(maes))
+    n_train = int(train_mask.sum())
+    n_test = int(test_mask.sum())
+
+    val_score = None
+    if n_train >= MIN_SAMPLES_FOR_FORCE and n_test >= MIN_SAMPLES_FOR_FORCE:
+        model = _make_regressor(n_train)
+        model.fit(X[train_mask], y[train_mask], sample_weight=weights[train_mask])
+        pred = model.predict(X[test_mask])
+        val_score = float(mean_absolute_error(y[test_mask], pred))
     else:
-        val_score = None
+        # Not enough data for time-split — train on everything without CV
+        model = _make_regressor(n_samples)
+        model.fit(X, y, sample_weight=weights)
 
-    model.fit(X, y, sample_weight=weights)
-
-    importances = dict(zip(FEATURE_NAMES, [float(v) for v in model.feature_importances_]))
+    importances = dict(zip(ML_FEATURE_NAMES, [float(v) for v in model.feature_importances_]))
     top_features = sorted(importances.items(), key=lambda item: item[1], reverse=True)[:5]
 
     return model, val_score, top_features, importances
@@ -577,7 +731,7 @@ def run_retrain(
 
     try:
         model, val_score, top_features, importances = train_model(rows, min_samples)
-    except ValueError as err:
+    except (ValueError, ImportError) as err:
         metrics = {
             "last_retrain": utc_now_iso(),
             "total_samples": total,
@@ -612,7 +766,6 @@ def run_retrain(
     avg_reward = sum(rewards) / max(1, len(rewards))
 
     if should_save:
-        # Track the score of the model actually on disk.
         best_val_score = round(val_score, 2) if val_score is not None else current_val
     else:
         best_val_score = current_val

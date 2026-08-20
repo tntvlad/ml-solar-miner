@@ -10,6 +10,7 @@ from homeassistant.helpers import selector
 from .const import (
     CONF_AUTO_CONTROL,
     CONF_BATTERY_CAPACITY_KWH,
+    CONF_GRID_INVERT,
     CONF_MINER_POWER_NUMBER,
     CONF_MINER_SWITCH,
     CONF_MIN_SAMPLES_FOR_MODEL,
@@ -58,6 +59,7 @@ STEP_3_SCHEMA = vol.Schema(
         vol.Optional(
             CONF_RETRAIN_INTERVAL, default=DEFAULT_RETRAIN_INTERVAL // 3600
         ): vol.All(vol.Coerce(int), vol.Range(min=1, max=720)),
+        vol.Optional(CONF_GRID_INVERT, default=False): bool,
     }
 )
 
@@ -72,6 +74,7 @@ def _split_options(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str
         CONF_AUTO_CONTROL: user_input.pop(CONF_AUTO_CONTROL),
         CONF_BATTERY_CAPACITY_KWH: user_input.pop(CONF_BATTERY_CAPACITY_KWH),
         CONF_MIN_SAMPLES_FOR_MODEL: user_input.pop(CONF_MIN_SAMPLES_FOR_MODEL),
+        CONF_GRID_INVERT: user_input.pop(CONF_GRID_INVERT, False),
     }
     return user_input, options
 

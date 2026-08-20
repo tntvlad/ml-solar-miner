@@ -11,6 +11,7 @@ from .const import (
     BATTERY_SOC_MIN,
     CONF_AUTO_CONTROL,
     CONF_BATTERY_CAPACITY_KWH,
+    CONF_GRID_INVERT,
     CONF_MINER_POWER_NUMBER,
     CONF_MINER_SWITCH,
     CONF_MIN_SAMPLES_FOR_MODEL,
@@ -26,6 +27,7 @@ from .const import (
     MINER_POWER_MIN,
     MISSED_SURPLUS_MINUTES,
     MISSED_SURPLUS_W,
+    MODEL_SHADOW_DAYS,
     RETRAIN_EVENT_COOLDOWN_SECONDS,
     SENSOR_STATE_KEYS,
     WEEKLY_RETRAIN_HOUR,
@@ -34,15 +36,18 @@ from .const import (
 )
 from .models import (
     ML_AVAILABLE,
+    apply_grid_sign,
     features_from_state,
     get_training_sample_count,
     grid_import_watts,
+    load_last_decision,
     load_metrics,
     load_model,
     log_decision_to_csv,
     parse_iso_datetime,
     rule_teacher,
     run_retrain,
+    save_last_decision,
     target_soc_from_forecast,
     utc_now_iso,
     validate_decision,
@@ -100,6 +105,7 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
             config_entry, CONF_SCAN_INTERVAL_OPTION, DEFAULT_SCAN_INTERVAL
         )
         self.update_interval = timedelta(seconds=scan_seconds)
+        self.grid_invert = get_entry_value(config_entry, CONF_GRID_INVERT, False)
 
         self.entity_map = {
             key: config_entry.data.get(key) for key in SENSOR_STATE_KEYS
@@ -111,12 +117,19 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
 
     async def async_setup_listeners(self) -> None:
         """Start scheduled and event-driven retrain watchers."""
+        # Load persisted state so sensors are not empty until first tick
         self.metrics = await self.hass.async_add_executor_job(
             load_metrics, self.hass_config_path
         )
         self.training_samples = await self.hass.async_add_executor_job(
             get_training_sample_count, self.hass_config_path
         )
+        persisted_decision = await self.hass.async_add_executor_job(
+            load_last_decision, self.hass_config_path
+        )
+        if persisted_decision:
+            self.last_decision = persisted_decision
+
         last = parse_iso_datetime(self.metrics.get("last_retrain"))
         if last:
             self._last_auto_retrain = last
@@ -133,6 +146,13 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
         self._unsubs.append(
             async_track_time_interval(
                 self.hass, self._check_retrain_triggers, timedelta(minutes=1)
+            )
+        )
+        # Watchdog: check SoC / grid safety every minute, independent of
+        # the 20-minute decision cycle.
+        self._unsubs.append(
+            async_track_time_interval(
+                self.hass, self._watchdog_check, timedelta(minutes=1)
             )
         )
 
@@ -152,7 +172,8 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
     async def _check_retrain_triggers(self, now: datetime) -> None:
         """Event-driven and interval-based retraining."""
         state = await self._read_entity_states()
-        grid_import = grid_import_watts(state.get("grid_power") or 0)
+        grid_power_raw = state.get("grid_power") or 0
+        grid_import = grid_import_watts(apply_grid_sign(grid_power_raw, self.grid_invert))
         soc = float(state.get("battery_soc") or 0)
         surplus = float(state.get("solar_surplus_power") or 0)
         miner_on = state.get("miner_is_on") == "on"
@@ -204,6 +225,56 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
         self._grid_high_since = None
         self._surplus_missed_since = None
 
+    async def _watchdog_check(self, now: datetime) -> None:
+        """Separate watchdog: kill miner if SoC drops or grid import spikes,
+        independent of the 20-minute decision cycle."""
+        if not self.auto_control:
+            return
+
+        state = await self._read_entity_states()
+        soc = float(state.get("battery_soc") or 0)
+        grid_power_raw = state.get("grid_power") or 0
+        grid_import = grid_import_watts(apply_grid_sign(grid_power_raw, self.grid_invert))
+        miner_on = state.get("miner_is_on") == "on"
+
+        if not miner_on:
+            return
+
+        should_kill = False
+        reason = ""
+
+        if soc < BATTERY_SOC_MIN:
+            should_kill = True
+            reason = f"Watchdog: SoC {soc:.0f}% below minimum {BATTERY_SOC_MIN}%"
+        elif grid_import > GRID_IMPORT_RETRAIN_W:
+            should_kill = True
+            reason = f"Watchdog: grid import {grid_import:.0f}W exceeds {GRID_IMPORT_RETRAIN_W}W"
+
+        if should_kill:
+            _LOGGER.warning("Watchdog killing miner: %s", reason)
+            try:
+                await self.hass.services.async_call(
+                    "switch", "turn_off",
+                    {"entity_id": self.miner_switch},
+                    blocking=True,
+                )
+                # Record the watchdog event
+                if self.last_decision:
+                    self.last_decision["mode"] = "safety_shutdown"
+                    self.last_decision["reason"] = reason
+                else:
+                    self.last_decision = {
+                        "miner_active": "off",
+                        "miner_power": MINER_POWER_MIN,
+                        "mode": "safety_shutdown",
+                        "reason": reason,
+                        "source": "watchdog",
+                        "timestamp": utc_now_iso(),
+                    }
+                self.async_update_listeners()
+            except Exception as err:
+                _LOGGER.error("Watchdog failed to turn off miner: %s", err)
+
     async def _async_update_data(self) -> dict:
         """Run ML decision cycle. Called every scan_interval."""
         try:
@@ -223,6 +294,12 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
 
             self.last_decision = decision
             self.training_samples = decision.get("training_samples", self.training_samples)
+
+            # Persist so sensors are not empty until next tick
+            await self.hass.async_add_executor_job(
+                save_last_decision, self.hass_config_path, decision
+            )
+
             return decision
 
         except Exception as err:
@@ -272,15 +349,31 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
         features = features_from_state(state)
         samples = get_training_sample_count(self.hass_config_path)
         forecast = float(state.get("forecast_tomorrow") or 0)
-        target_soc = target_soc_from_forecast(forecast)
 
         if not self._model_loaded:
             self._model, _ = load_model(self.hass_config_path)
             self._model_loaded = True
 
-        use_model = (
-            self._model is not None and samples >= self.min_samples_for_model
+        # Shadow period: only allow model after MODEL_SHADOW_DAYS of data
+        # and the model must have been trained at least once.
+        now = utc_now()
+        retrain_time = parse_iso_datetime(self.metrics.get("last_retrain"))
+        shadow_ok = (
+            retrain_time is not None
+            and (now - retrain_time).total_seconds() >= MODEL_SHADOW_DAYS * 86400
         )
+
+        use_model = (
+            ML_AVAILABLE
+            and self._model is not None
+            and samples >= self.min_samples_for_model
+            and shadow_ok
+        )
+
+        # Determine previous miner state for teacher hysteresis
+        prev_miner_active = state.get("miner_is_on", "off")
+        if prev_miner_active not in ("on", "off"):
+            prev_miner_active = "off"
 
         if use_model:
             import numpy as np
@@ -294,17 +387,23 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
             decision = {
                 "miner_active": "on" if predicted_power >= MINER_POWER_MIN else "off",
                 "miner_power": predicted_power,
-                "target_soc_by_sunrise": target_soc,
+                "target_soc_by_sunrise": 30,
                 "mode": mode,
-                "reason": "ML model prediction",
+                "reason": "ML residual prediction",
             }
             source = "ml_model"
         else:
-            decision = rule_teacher(features, self.battery_capacity_kwh)
+            decision = rule_teacher(
+                features,
+                self.battery_capacity_kwh,
+                prev_miner_active=prev_miner_active,
+            )
             source = "rule_teacher"
 
         decision["_soc"] = state.get("battery_soc", 50)
-        decision["_grid_power"] = state.get("grid_power", 0)
+        decision["_grid_power"] = apply_grid_sign(
+            _as_float(state.get("grid_power"), 0), self.grid_invert
+        )
         decision = validate_decision(decision)
         decision["source"] = source
         decision["training_samples"] = samples
@@ -385,3 +484,13 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
             "model_loaded": self._model is not None,
             "metrics": self.metrics,
         }
+
+
+def _as_float(value, default: float = 0.0) -> float:
+    """Coerce value to float (local copy to avoid circular import)."""
+    if value is None or value == "":
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default

@@ -13,16 +13,20 @@ ML-powered Bitcoin miner power management for Home Assistant. Uses machine learn
 
 ### ML Decision Engine
 
-- **GradientBoostingRegressor** trained on historical decisions with reward-weighted learning
-- **Rule-based teacher fallback** replicates proven Ollama LLM logic during bootstrap phase
-- **Self-improving**: model retrains weekly and after performance degradation events
-- **19 input features**: solar, battery, grid, forecasts, miner state, time-of-day
+- **Residual GradientBoostingRegressor** — learns *when and how much* to deviate from the rule teacher, instead of cloning the last decision
+- **Rule-based teacher fallback** replicates proven logic during bootstrap phase and as a safety net
+- **Time-split validation** — holdout test set (last 7 days) prevents future-leakage; model saves only when MAE improves
+- **Reward-weighted training** with configurable floor (`REWARD_FLOOR_FOR_TRAINING`) to exclude garbage rows
+- **17 input features**: solar, battery, grid, forecasts, time-of-day (no miner state to prevent circular logic)
+- **Shadow period** — teacher runs alone for the first 7 days before the model is allowed to act
+- **Optional ML stack** — integration works on all platforms including Raspberry Pi; scikit-learn can be installed later
 
 ### Decision Modes
 
-- **DAY (solar)**: Matches miner power to real-time solar surplus (3500-6000W)
-- **NIGHT (drain)**: Calculates optimal drain rate to reach target SoC by sunrise based on next-day forecast
-- **SAFETY**: Hard limits — SoC < 12% = miner OFF (`safety_shutdown`), grid import > 300W = reduce power (or off if below 3500W). Positive `grid_power` is treated as import.
+- **DAY (solar)**: Matches miner power to real-time solar surplus (3500–6000W) with **hysteresis** to prevent on/off chattering at the boundary
+- **NIGHT (drain)**: Calculates optimal drain rate to reach target SoC by sunrise; uses real `battery_kwh_available` when present, falls back to SoC × capacity
+- **SAFETY**: Hard limits — SoC < 10% = miner OFF (`safety_shutdown`), grid import > 300W = reduce power. Independent **watchdog** checks every 1 minute, outside the 20-minute decision cycle.
+- **UNECONOMIC**: Stays off when `mining_viability_score` < configured floor
 
 ### Auto-Retraining Triggers
 
@@ -36,8 +40,10 @@ ML-powered Bitcoin miner power management for Home Assistant. Uses machine learn
 - **Config flow UI** — 3-step setup wizard, no YAML editing needed
 - **DataUpdateCoordinator** — runs in-process, no shell_command subprocesses
 - **Auto-control switch** — toggle AI control from the dashboard
+- **Watchdog** — independent 1-minute SoC/grid safety check, separate from the 20-minute decision cycle
+- **Persist last decision** — sensors show real values immediately after restart, not empty until first tick
+- **Grid sign convention** — `grid_invert` option for Victron (positive = export) vs Fronius (positive = import)
 - **Services** — `ml_solar_miner.retrain` and `ml_solar_miner.decision`
-- **Automatic dependency install** — scikit-learn + numpy installed by HA via manifest.json
 - **Legacy data migration** — auto-migrates training data from old shell_command setup
 
 ---
@@ -47,23 +53,36 @@ ML-powered Bitcoin miner power management for Home Assistant. Uses machine learn
 ### Decision Cycle (every 20 min)
 
 ```
-HA Entity States (19 features)
+HA Entity States (17 features)
         │
         ▼
 DataUpdateCoordinator
         │
         ├── Read entity states via hass.states.get()
         ├── Build feature vector (features_from_state)
+        │
+        ├── Shadow period check (< 7 days since first train → teacher only)
         ├── Load model from cache or disk (executor thread)
         │
-        ├── If model exists + sample count ≥ min_samples (default 50):
-        │   └── GradientBoostingRegressor.predict()
+        ├── If model exists + shadow OK + sample count ≥ min_samples:
+        │   └── GradientBoostingRegressor.predict() → residual
+        │   └── Final power = teacher_power + residual
         └── Else:
             └── Rule-based teacher (day_solar / night_drain)
         │
         ├── Validate decision (safety clamp)
         ├── Log to training_data.csv
+        ├── Persist last_decision.json
         └── Apply: switch.turn_on/off + number.set_value
+```
+
+### Watchdog (every 1 min, independent)
+
+```
+Entity States
+    │
+    ├── If miner ON and SoC < 12% → turn OFF
+    └── If miner ON and grid import > 500W → turn OFF
 ```
 
 ### Retraining Cycle
@@ -73,9 +92,11 @@ Trigger (weekly / event-driven / service call)
         │
         ├── Read training_data.csv
         ├── Fill rewards from consecutive rows
-        ├── Weight samples by reward score
-        ├── Fit GradientBoostingRegressor (100 trees, depth 4)
-        ├── 5-fold cross-validation (if ≥50 samples)
+        ├── Filter rows with reward < REWARD_FLOOR_FOR_TRAINING (-10)
+        ├── Sort by timestamp, time-split (last 7 days = test set)
+        ├── Compute teacher power for each row → build residual targets
+        ├── Fit GradientBoostingRegressor on residuals (100 trees, depth 4)
+        ├── Time-split validation MAE (not shuffled K-fold)
         ├── Save only if validation MAE improves
         └── Update coordinator sensors
 ```
@@ -84,13 +105,14 @@ Trigger (weekly / event-driven / service call)
 
 | Parameter | Value |
 |-----------|-------|
-| Algorithm | GradientBoostingRegressor |
+| Algorithm | GradientBoostingRegressor (residual) |
+| Target | `actual_power - teacher_power` (residual, not direct) |
 | Estimators | 100 |
 | Max depth | 4 |
 | Learning rate | 0.1 |
 | Min samples leaf | 5 |
 | Subsample | 0.8 |
-| Target | Optimal miner power (W) |
+| Validation | Time-split (last 7 days as test set) |
 | Weighting | Reward-weighted (high reward = more influence) |
 
 ---
@@ -148,6 +170,20 @@ Trigger (weekly / event-driven / service call)
 3. Restart Home Assistant.
 4. Add the integration via **Settings → Devices & Services**.
 
+### Enabling ML (Optional)
+
+The integration works out of the box with the rule-based teacher. To enable the ML model:
+
+```bash
+# Docker
+docker exec -it homeassistant pip install scikit-learn numpy
+
+# HA OS / Supervised (via terminal add-on)
+pip install scikit-learn numpy
+```
+
+After installing, trigger a retrain via the `ml_solar_miner.retrain` service or wait for the next scheduled retrain. The model will begin learning after 7 days of shadow data collection.
+
 ---
 
 ## Configuration
@@ -160,7 +196,7 @@ Select your miner switch and power number entities.
 
 ### Step 2: Sensor Mapping
 
-Map your HA sensor entities to the 19 ML engine inputs. Entity selectors make this easy.
+Map your HA sensor entities to the 17 ML engine inputs. Entity selectors make this easy.
 
 ### Step 3: Options
 
@@ -171,6 +207,7 @@ Map your HA sensor entities to the 19 ML engine inputs. Entity selectors make th
 | Battery Capacity | 69.6 kWh | Total battery bank capacity |
 | Min Samples for ML | 50 | Training samples before ML takes over |
 | Auto-Retrain Interval | 168 hours | How often to retrain the model |
+| Grid Invert | No | Invert grid sign (Victron: positive = export) |
 
 ---
 
@@ -178,7 +215,7 @@ Map your HA sensor entities to the 19 ML engine inputs. Entity selectors make th
 
 | Entity | Type | Description |
 |--------|------|-------------|
-| `sensor.ml_solar_miner_decision_mode` | Sensor | `day_solar`, `night_drain`, or `safety_shutdown` |
+| `sensor.ml_solar_miner_decision_mode` | Sensor | `day_solar`, `night_drain`, `safety_shutdown`, or `uneconomic` |
 | `sensor.ml_solar_miner_decision_reason` | Sensor | Human-readable reason for the decision |
 | `sensor.ml_solar_miner_miner_power` | Sensor | Target miner power in watts |
 | `sensor.ml_solar_miner_target_soc` | Sensor | Target battery SoC by sunrise (%) |
@@ -297,12 +334,12 @@ cards:
 
 ```
 custom_components/ml_solar_miner/
-├── __init__.py          # Entry point, service registration
-├── manifest.json        # HA integration metadata (scikit-learn in requirements)
-├── const.py             # Constants, feature names, config keys
+├── __init__.py          # Entry point, service registration, ML_AVAILABLE warning
+├── manifest.json        # HA integration metadata (ML deps optional)
+├── const.py             # Constants, 17 feature names, config keys, grid convention
 ├── config_flow.py       # 3-step UI config wizard
-├── coordinator.py       # DataUpdateCoordinator — core ML logic
-├── models.py            # ML model management (load/save/train/reward)
+├── coordinator.py       # DataUpdateCoordinator + 1-min watchdog
+├── models.py            # ML model (residual), teacher, reward, persistence
 ├── sensor.py            # 9 sensor entities
 ├── switch.py            # Auto-control toggle switch
 ├── services.yaml        # Service definitions
@@ -313,7 +350,8 @@ custom_components/ml_solar_miner/
     └── icon.png         # Integration icon
 
 tests/
-└── test_models.py       # Unit tests for teacher, safety, reward, retrain
+├── conftest.py          # Manual module loader (no HA required)
+└── test_models.py       # 36 unit tests for teacher, safety, reward, persistence
 ```
 
 ---
@@ -328,7 +366,7 @@ If you're migrating from the shell_command-based setup:
 4. Enable `auto_control: true` and disable the old `mining_decision_engine_ml` automation
 5. Remove old shell_command entries and Python scripts from `configuration.yaml`
 
-> The `mining_safety_watchdog` automation should remain as an independent safety layer.
+> The `mining_safety_watchdog` automation can be removed — the integration includes its own independent watchdog.
 
 ---
 

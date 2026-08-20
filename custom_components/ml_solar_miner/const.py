@@ -6,8 +6,13 @@ DEFAULT_NAME = "ML Solar Miner"
 # Coordinator
 DEFAULT_SCAN_INTERVAL = 1200  # 20 minutes
 
-# Feature names (19 features for ML model)
-FEATURE_NAMES = [
+# Grid sign convention: +1 = positive means import (default / Fronius)
+#                       -1 = positive means export (Victron-style)
+GRID_SIGN_DEFAULT = 1
+
+# Feature names for the ML model (17 — excludes current_miner_power and miner_is_on
+# so the model cannot just "keep doing what we did")
+ML_FEATURE_NAMES = [
     "hour_of_day",
     "is_daytime",
     "hours_until_sunrise",
@@ -25,9 +30,10 @@ FEATURE_NAMES = [
     "forecast_day3",
     "grid_power",
     "mining_viability_score",
-    "current_miner_power",
-    "miner_is_on",
 ]
+
+# Back-compat alias used by sensor/coordinator for feature extraction
+FEATURE_NAMES = ML_FEATURE_NAMES
 
 # Miner power constraints
 MINER_POWER_MIN = 3500
@@ -39,13 +45,24 @@ BATTERY_SOC_MIN = 12
 BATTERY_SOC_CRITICAL = 10
 DEFAULT_BATTERY_CAPACITY_KWH = 69.6
 
-# Grid import (positive watts = import from grid)
+# Grid import (positive watts = import from grid after sign convention applied)
 GRID_IMPORT_TOLERANCE = 100
 GRID_IMPORT_REDUCE_W = 300
 GRID_IMPORT_RETRAIN_W = 500
 GRID_IMPORT_RETRAIN_MINUTES = 10
+
+# Grid hysteresis — prevents on/off chattering around the 3500W boundary
+# When miner was OFF: require surplus > MINER_POWER_MIN + HYSTERESIS to start
+# When miner was ON:  keep running until surplus < MINER_POWER_MIN - HYSTERESIS
+GRID_HYSTERESIS_W = 200
+
+# Missed surplus
 MISSED_SURPLUS_W = 4000
 MISSED_SURPLUS_MINUTES = 15
+
+# Mining viability — hashprice floor below which the miner should stay off
+# even with surplus available.  0.0 disables the check.
+VIABILITY_FLOOR = 0.0
 
 # Auto-retrain
 RETRAIN_EVENT_COOLDOWN_SECONDS = 3600
@@ -59,6 +76,15 @@ MIN_SAMPLES_FOR_TEACHER_ONLY = 20
 MIN_SAMPLES_FOR_FORCE = 2
 DEFAULT_RETRAIN_INTERVAL = 604800  # 7 days in seconds
 CROSS_VAL_FOLDS = 5
+
+# Minimum reward score for a row to be included in training
+REWARD_FLOOR_FOR_TRAINING = -10.0
+
+# Time-split validation: hold out the last N days as test set
+MODEL_OBSERVATION_DAYS = 7
+
+# Shadow period: teacher runs alone for N days before the model is allowed to act
+MODEL_SHADOW_DAYS = 7
 
 # Config flow keys
 CONF_MINER_SWITCH = "miner_switch"
@@ -84,6 +110,7 @@ CONF_AUTO_CONTROL = "auto_control"
 CONF_BATTERY_CAPACITY_KWH = "battery_capacity_kwh"
 CONF_MIN_SAMPLES_FOR_MODEL = "min_samples_for_model"
 CONF_RETRAIN_INTERVAL = "retrain_interval"
+CONF_GRID_INVERT = "grid_invert"
 
 # Entity attribute keys
 ATTR_LAST_RETRAIN = "last_retrain"
@@ -107,6 +134,7 @@ ML_DATA_DIR = "ml_solar_miner"
 MODEL_FILENAME = "mining_model.pkl"
 TRAINING_CSV_FILENAME = "training_data.csv"
 METRICS_FILENAME = "training_metrics.json"
+LAST_DECISION_FILENAME = "last_decision.json"
 
 # Legacy paths for migration
 LEGACY_ML_MODELS_DIR = "ml_models"
@@ -133,6 +161,7 @@ SENSOR_STATE_KEYS = (
     "grid_power",
     "mining_viability_score",
 )
+
 
 def get_entry_value(entry, key, default=None):
     """Read a value from options, falling back to data for older entries."""
