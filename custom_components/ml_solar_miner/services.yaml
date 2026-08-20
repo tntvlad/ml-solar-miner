@@ -1,0 +1,16 @@
+retrain:
+  name: Retrain ML Model
+  description: Trigger an immediate retraining cycle.
+  fields:
+    force:
+      name: Force Retrain
+      description: Retrain even if below minimum samples.
+      required: false
+      default: false
+      selector:
+        boolean: {}
+
+decision:
+  name: Run Decision
+  description: Trigger an immediate ML decision cycle (bypasses normal schedule).
+  fields: {}

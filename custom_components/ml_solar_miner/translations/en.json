@@ -1,0 +1,65 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "ML Solar Miner Setup",
+        "description": "Configure the miner control entities.",
+        "data": {
+          "miner_switch": "Miner Switch Entity",
+          "miner_power_number": "Miner Power Number Entity"
+        }
+      },
+      "sensors": {
+        "title": "Sensor Entity Mapping",
+        "description": "Map your HA sensor entities to the ML engine inputs.",
+        "data": {
+          "solar_power_total": "Solar Power Total",
+          "solar_surplus_power": "Solar Surplus Power",
+          "battery_soc": "Battery State of Charge",
+          "battery_voltage": "Battery Voltage",
+          "battery_current": "Battery Current",
+          "battery_power": "Battery Power",
+          "battery_kwh_available": "Battery kWh Available",
+          "battery_drain_rate": "Battery Drain Rate",
+          "battery_hours_to_min": "Battery Hours to Minimum",
+          "hours_until_sunrise": "Hours Until Sunrise",
+          "total_load_power": "Total Load Power",
+          "miner_consumption": "Miner Consumption",
+          "forecast_tomorrow": "Solar Forecast Tomorrow",
+          "forecast_day3": "Solar Forecast Day 3",
+          "grid_power": "Grid Power",
+          "mining_viability_score": "Mining Viability Score"
+        }
+      },
+      "options": {
+        "title": "ML Options",
+        "description": "Configure ML engine behavior.",
+        "data": {
+          "scan_interval": "Decision Interval (minutes)",
+          "auto_control": "Auto-Apply Decisions",
+          "battery_capacity_kwh": "Battery Capacity (kWh)",
+          "min_samples_for_model": "Min Samples for ML Model",
+          "retrain_interval": "Auto-Retrain Interval (hours)"
+        }
+      }
+    },
+    "error": {
+      "entity_not_found": "Entity not found. Please select a valid entity."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "ML Solar Miner Options",
+        "description": "Configure ML engine behavior.",
+        "data": {
+          "scan_interval": "Decision Interval (minutes)",
+          "auto_control": "Auto-Apply Decisions",
+          "battery_capacity_kwh": "Battery Capacity (kWh)",
+          "min_samples_for_model": "Min Samples for ML Model",
+          "retrain_interval": "Auto-Retrain Interval (hours)"
+        }
+      }
+    }
+  }
+}

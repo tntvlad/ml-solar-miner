@@ -1,0 +1,15 @@
+{
+  "domain": "ml_solar_miner",
+  "name": "ML Solar Miner",
+  "codeowners": ["@tntvlad"],
+  "config_flow": true,
+  "single_config_entry": true,
+  "dependencies": [],
+  "documentation": "https://github.com/tntvlad/ml-solar-miner",
+  "integration_type": "hub",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/tntvlad/ml-solar-miner/issues",
+  "loggers": ["custom_components.ml_solar_miner"],
+  "requirements": ["scikit-learn>=1.3.0", "numpy>=1.24.0"],
+  "version": "1.0.0"
+}

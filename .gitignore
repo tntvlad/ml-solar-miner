@@ -1,0 +1,29 @@
+# Home Assistant
+secrets.yaml
+*.log
+.__pycache__/
+*.pyc
+
+# ML models (generated, not source)
+config/ml_models/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Legacy files (not part of HACS integration)
+config/
+backup_*/
+backup_ml_*/
+ML_DECISION_ENGINE.md
+PROJECT.md
+secrets.yaml.example
+lovelace_mining_ml_card.yaml
+HACS_CONVERSION_PLAN.md
+
+# Editor
+*.swp
+*.swo
+*~
+.vscode/
+.idea/

@@ -1,0 +1,6 @@
+{
+  "name": "ML Solar Miner",
+  "homeassistant": "2024.1.0",
+  "render_readme": true,
+  "persistent_directory": "ml_solar_miner"
+}
