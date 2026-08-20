@@ -7,7 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
+from .const import CONF_AUTO_CONTROL, DOMAIN
 from .coordinator import MLSolarMinerCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -42,7 +42,7 @@ class MLSolarMinerControlSwitch(SwitchEntity):
             name="ML Solar Miner",
             manufacturer="ML Solar Miner",
             model="ML Decision Engine",
-            sw_version="1.0.0",
+            sw_version="1.0.1",
         )
 
     @property
@@ -50,22 +50,25 @@ class MLSolarMinerControlSwitch(SwitchEntity):
         """Return true if auto-control is enabled."""
         return self.coordinator.auto_control
 
+    async def _async_set_auto_control(self, enabled: bool) -> None:
+        self.coordinator.auto_control = enabled
+        new_options = dict(self._config_entry.options)
+        new_options[CONF_AUTO_CONTROL] = enabled
+        new_data = dict(self._config_entry.data)
+        new_data[CONF_AUTO_CONTROL] = enabled
+        self.hass.config_entries.async_update_entry(
+            self._config_entry, data=new_data, options=new_options
+        )
+        self.async_write_ha_state()
+
     async def async_turn_on(self, **kwargs) -> None:
         """Enable auto-control."""
-        self.coordinator.auto_control = True
-        new_data = dict(self._config_entry.data)
-        new_data["auto_control"] = True
-        self.hass.config_entries.async_update_entry(self._config_entry, data=new_data)
-        self.async_write_ha_state()
+        await self._async_set_auto_control(True)
         _LOGGER.info("ML auto-control enabled")
 
     async def async_turn_off(self, **kwargs) -> None:
         """Disable auto-control."""
-        self.coordinator.auto_control = False
-        new_data = dict(self._config_entry.data)
-        new_data["auto_control"] = False
-        self.hass.config_entries.async_update_entry(self._config_entry, data=new_data)
-        self.async_write_ha_state()
+        await self._async_set_auto_control(False)
         _LOGGER.info("ML auto-control disabled")
 
     @property

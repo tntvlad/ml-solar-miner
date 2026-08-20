@@ -4,7 +4,7 @@ from datetime import datetime
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfPower
+from homeassistant.const import PERCENTAGE, UnitOfPower
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -15,20 +15,15 @@ from .const import (
     ATTR_LAST_RETRAIN,
     ATTR_MAX_REWARD,
     ATTR_MIN_REWARD,
-    ATTR_MINER_ACTIVE,
-    ATTR_MINER_POWER,
-    ATTR_MODE,
     ATTR_MODEL_SAVED,
-    ATTR_REASON,
-    ATTR_SOURCE,
     ATTR_STATUS,
-    ATTR_TARGET_SOC,
     ATTR_TOP_FEATURES,
     ATTR_TOTAL_SAMPLES,
     ATTR_VAL_MAE,
     DOMAIN,
 )
 from .coordinator import MLSolarMinerCoordinator
+from .models import parse_iso_datetime
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -70,7 +65,7 @@ class MLSolarMinerSensorBase(CoordinatorEntity):
             name="ML Solar Miner",
             manufacturer="ML Solar Miner",
             model="ML Decision Engine",
-            sw_version="1.0.0",
+            sw_version="1.0.1",
         )
 
 
@@ -121,6 +116,8 @@ class MLSolarMinerTargetSocSensor(MLSolarMinerSensorBase):
 
     _attr_unique_id = "ml_solar_miner_target_soc"
     _attr_translation_key = "ml_solar_miner_target_soc"
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
 
     @property
     def native_value(self) -> int | None:
@@ -147,13 +144,13 @@ class MLSolarMinerTrainingSamplesSensor(MLSolarMinerSensorBase):
 
     _attr_unique_id = "ml_solar_miner_training_samples"
     _attr_translation_key = "ml_solar_miner_training_samples"
-    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_state_class = SensorStateClass.MEASUREMENT
 
     @property
     def native_value(self) -> int:
         if self.coordinator.last_decision:
             return self.coordinator.last_decision.get("training_samples", 0)
-        return 0
+        return self.coordinator.training_samples
 
 
 class MLSolarMinerTrainingStatusSensor(MLSolarMinerSensorBase):
@@ -164,16 +161,11 @@ class MLSolarMinerTrainingStatusSensor(MLSolarMinerSensorBase):
 
     @property
     def native_value(self) -> str | None:
-        from .models import load_metrics
-
-        metrics = load_metrics(self.coordinator.hass_config_path)
-        return metrics.get("status", "no_data")
+        return self.coordinator.metrics.get("status", "no_data")
 
     @property
     def extra_state_attributes(self) -> dict:
-        from .models import load_metrics
-
-        metrics = load_metrics(self.coordinator.hass_config_path)
+        metrics = self.coordinator.metrics
         return {
             ATTR_LAST_RETRAIN: metrics.get("last_retrain"),
             ATTR_TOTAL_SAMPLES: metrics.get("total_samples", 0),
@@ -195,17 +187,8 @@ class MLSolarMinerLastRetrainSensor(MLSolarMinerSensorBase):
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
     @property
-    def native_value(self) -> str | None:
-        from .models import load_metrics
-
-        metrics = load_metrics(self.coordinator.hass_config_path)
-        ts = metrics.get("last_retrain")
-        if ts:
-            try:
-                return datetime.fromisoformat(ts).isoformat()
-            except ValueError:
-                return ts
-        return None
+    def native_value(self) -> datetime | None:
+        return parse_iso_datetime(self.coordinator.metrics.get("last_retrain"))
 
 
 class MLSolarMinerLastDecisionSensor(MLSolarMinerSensorBase):
@@ -216,12 +199,7 @@ class MLSolarMinerLastDecisionSensor(MLSolarMinerSensorBase):
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
     @property
-    def native_value(self) -> str | None:
-        if self.coordinator.last_decision:
-            ts = self.coordinator.last_decision.get("timestamp")
-            if ts:
-                try:
-                    return datetime.fromisoformat(ts).isoformat()
-                except ValueError:
-                    return ts
-        return None
+    def native_value(self) -> datetime | None:
+        if not self.coordinator.last_decision:
+            return None
+        return parse_iso_datetime(self.coordinator.last_decision.get("timestamp"))

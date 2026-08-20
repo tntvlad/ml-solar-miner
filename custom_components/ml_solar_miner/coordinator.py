@@ -4,28 +4,46 @@ import logging
 from datetime import datetime, timedelta
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.event import async_track_time_change, async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
+    BATTERY_SOC_MIN,
     CONF_AUTO_CONTROL,
     CONF_BATTERY_CAPACITY_KWH,
     CONF_MINER_POWER_NUMBER,
     CONF_MINER_SWITCH,
     CONF_MIN_SAMPLES_FOR_MODEL,
+    CONF_RETRAIN_INTERVAL,
     CONF_SCAN_INTERVAL_OPTION,
     DEFAULT_BATTERY_CAPACITY_KWH,
     DEFAULT_MIN_SAMPLES_FOR_MODEL,
+    DEFAULT_RETRAIN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    GRID_IMPORT_RETRAIN_MINUTES,
+    GRID_IMPORT_RETRAIN_W,
     MINER_POWER_MIN,
+    MISSED_SURPLUS_MINUTES,
+    MISSED_SURPLUS_W,
+    RETRAIN_EVENT_COOLDOWN_SECONDS,
+    SENSOR_STATE_KEYS,
+    WEEKLY_RETRAIN_HOUR,
+    WEEKLY_RETRAIN_WEEKDAY,
+    get_entry_value,
 )
 from .models import (
     features_from_state,
     get_training_sample_count,
+    grid_import_watts,
     load_metrics,
     load_model,
     log_decision_to_csv,
+    parse_iso_datetime,
     rule_teacher,
+    run_retrain,
+    target_soc_from_forecast,
+    utc_now_iso,
     validate_decision,
 )
 
@@ -42,74 +60,168 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
             _LOGGER,
             name=DOMAIN,
             update_interval=timedelta(
-                seconds=config_entry.data.get(CONF_SCAN_INTERVAL_OPTION, DEFAULT_SCAN_INTERVAL)
+                seconds=get_entry_value(
+                    config_entry, CONF_SCAN_INTERVAL_OPTION, DEFAULT_SCAN_INTERVAL
+                )
             ),
         )
         self.config_entry = config_entry
         self.hass_config_path = hass.config.path
-
-        # Configured entity IDs
-        self.miner_switch = config_entry.data[CONF_MINER_SWITCH]
-        self.miner_power_number = config_entry.data[CONF_MINER_POWER_NUMBER]
-        self.auto_control = config_entry.data.get(CONF_AUTO_CONTROL, True)
-        self.battery_capacity_kwh = config_entry.data.get(
-            CONF_BATTERY_CAPACITY_KWH, DEFAULT_BATTERY_CAPACITY_KWH
-        )
-        self.min_samples_for_model = config_entry.data.get(
-            CONF_MIN_SAMPLES_FOR_MODEL, DEFAULT_MIN_SAMPLES_FOR_MODEL
-        )
-
-        # Entity ID mapping (sensor config keys -> HA entity IDs)
-        self.entity_map = {
-            "solar_power_total": config_entry.data.get("solar_power_total"),
-            "solar_surplus_power": config_entry.data.get("solar_surplus_power"),
-            "battery_soc": config_entry.data.get("battery_soc"),
-            "battery_voltage": config_entry.data.get("battery_voltage"),
-            "battery_current": config_entry.data.get("battery_current"),
-            "battery_power": config_entry.data.get("battery_power"),
-            "battery_kwh_available": config_entry.data.get("battery_kwh_available"),
-            "battery_drain_rate": config_entry.data.get("battery_drain_rate"),
-            "battery_hours_to_min": config_entry.data.get("battery_hours_to_min"),
-            "hours_until_sunrise": config_entry.data.get("hours_until_sunrise"),
-            "total_load_power": config_entry.data.get("total_load_power"),
-            "miner_consumption": config_entry.data.get("miner_consumption"),
-            "forecast_tomorrow": config_entry.data.get("forecast_tomorrow"),
-            "forecast_day3": config_entry.data.get("forecast_day3"),
-            "grid_power": config_entry.data.get("grid_power"),
-            "mining_viability_score": config_entry.data.get("mining_viability_score"),
-            "current_miner_power": config_entry.data.get("miner_power_number"),
-            "miner_is_on": config_entry.data.get("miner_switch"),
-        }
-
-        # State
         self.last_decision = None
+        self.metrics: dict = {}
+        self.training_samples = 0
         self._model = None
         self._model_loaded = False
         self._csv_lock = asyncio.Lock()
+        self._retraining = False
+        self._unsubs: list = []
+        self._grid_high_since: datetime | None = None
+        self._surplus_missed_since: datetime | None = None
+        self._last_auto_retrain: datetime | None = None
+        self.apply_config(config_entry)
+
+    def apply_config(self, config_entry) -> None:
+        """Apply config entry data/options to the running coordinator."""
+        self.config_entry = config_entry
+        self.miner_switch = config_entry.data[CONF_MINER_SWITCH]
+        self.miner_power_number = config_entry.data[CONF_MINER_POWER_NUMBER]
+        self.auto_control = get_entry_value(config_entry, CONF_AUTO_CONTROL, True)
+        self.battery_capacity_kwh = get_entry_value(
+            config_entry, CONF_BATTERY_CAPACITY_KWH, DEFAULT_BATTERY_CAPACITY_KWH
+        )
+        self.min_samples_for_model = get_entry_value(
+            config_entry, CONF_MIN_SAMPLES_FOR_MODEL, DEFAULT_MIN_SAMPLES_FOR_MODEL
+        )
+        self.retrain_interval = get_entry_value(
+            config_entry, CONF_RETRAIN_INTERVAL, DEFAULT_RETRAIN_INTERVAL
+        )
+        scan_seconds = get_entry_value(
+            config_entry, CONF_SCAN_INTERVAL_OPTION, DEFAULT_SCAN_INTERVAL
+        )
+        self.update_interval = timedelta(seconds=scan_seconds)
+
+        self.entity_map = {
+            key: config_entry.data.get(key) for key in SENSOR_STATE_KEYS
+        }
+        self.entity_map["current_miner_power"] = config_entry.data.get(
+            CONF_MINER_POWER_NUMBER
+        )
+        self.entity_map["miner_is_on"] = config_entry.data.get(CONF_MINER_SWITCH)
+
+    async def async_setup_listeners(self) -> None:
+        """Start scheduled and event-driven retrain watchers."""
+        self.metrics = await self.hass.async_add_executor_job(
+            load_metrics, self.hass_config_path
+        )
+        self.training_samples = await self.hass.async_add_executor_job(
+            get_training_sample_count, self.hass_config_path
+        )
+        last = parse_iso_datetime(self.metrics.get("last_retrain"))
+        if last:
+            self._last_auto_retrain = last
+
+        self._unsubs.append(
+            async_track_time_change(
+                self.hass,
+                self._handle_weekly_retrain,
+                hour=WEEKLY_RETRAIN_HOUR,
+                minute=0,
+                second=0,
+            )
+        )
+        self._unsubs.append(
+            async_track_time_interval(
+                self.hass, self._check_retrain_triggers, timedelta(minutes=1)
+            )
+        )
+
+    def async_unload_listeners(self) -> None:
+        """Cancel retrain watchers."""
+        for unsub in self._unsubs:
+            unsub()
+        self._unsubs.clear()
+
+    async def _handle_weekly_retrain(self, now: datetime) -> None:
+        """Sunday 03:00 retrain."""
+        if now.weekday() != WEEKLY_RETRAIN_WEEKDAY:
+            return
+        _LOGGER.info("Weekly retrain triggered")
+        await self.async_retrain(force=False)
+
+    async def _check_retrain_triggers(self, now: datetime) -> None:
+        """Event-driven and interval-based retraining."""
+        state = await self._read_entity_states()
+        grid_import = grid_import_watts(state.get("grid_power") or 0)
+        soc = float(state.get("battery_soc") or 0)
+        surplus = float(state.get("solar_surplus_power") or 0)
+        miner_on = state.get("miner_is_on") == "on"
+
+        reason = None
+        if grid_import > GRID_IMPORT_RETRAIN_W:
+            if self._grid_high_since is None:
+                self._grid_high_since = now
+            elif now - self._grid_high_since >= timedelta(
+                minutes=GRID_IMPORT_RETRAIN_MINUTES
+            ):
+                reason = "grid_import"
+        else:
+            self._grid_high_since = None
+
+        if soc < BATTERY_SOC_MIN and miner_on:
+            reason = "soc_safety"
+
+        if surplus > MISSED_SURPLUS_W and not miner_on:
+            if self._surplus_missed_since is None:
+                self._surplus_missed_since = now
+            elif now - self._surplus_missed_since >= timedelta(
+                minutes=MISSED_SURPLUS_MINUTES
+            ):
+                reason = "missed_surplus"
+        else:
+            self._surplus_missed_since = None
+
+        if reason is None:
+            last = parse_iso_datetime(self.metrics.get("last_retrain"))
+            if last is None or (now - last).total_seconds() >= self.retrain_interval:
+                if self.training_samples:
+                    reason = "interval"
+
+        if reason is None:
+            return
+
+        if (
+            reason != "interval"
+            and self._last_auto_retrain
+            and (now - self._last_auto_retrain).total_seconds()
+            < RETRAIN_EVENT_COOLDOWN_SECONDS
+        ):
+            return
+
+        _LOGGER.info("Auto-retrain triggered: %s", reason)
+        await self.async_retrain(force=reason != "interval")
+        self._last_auto_retrain = now
+        self._grid_high_since = None
+        self._surplus_missed_since = None
 
     async def _async_update_data(self) -> dict:
         """Run ML decision cycle. Called every scan_interval."""
         try:
-            # 1. Read entity states
             state = await self._read_entity_states()
 
-            # 2. Run ML inference in executor thread
             decision = await self.hass.async_add_executor_job(
                 self._run_decision, state
             )
 
-            # 3. Log decision to CSV
             async with self._csv_lock:
                 await self.hass.async_add_executor_job(
                     log_decision_to_csv, self.hass_config_path, state, decision
                 )
 
-            # 4. Apply decision if auto-control enabled
             if self.auto_control:
                 await self._apply_decision(decision)
 
-            # 5. Store for sensors
             self.last_decision = decision
+            self.training_samples = decision.get("training_samples", self.training_samples)
             return decision
 
         except Exception as err:
@@ -121,19 +233,30 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
         state = {}
         for key, entity_id in self.entity_map.items():
             if not entity_id:
-                state[key] = 0.0 if key != "miner_is_on" else "off"
+                if key == "miner_is_on":
+                    state[key] = "off"
+                elif key == "hours_until_sunrise":
+                    state[key] = None
+                else:
+                    state[key] = 0.0
                 continue
 
             ent = self.hass.states.get(entity_id)
             if ent and ent.state not in ("unavailable", "unknown"):
                 try:
-                    state[key] = (
-                        float(ent.state) if key != "miner_is_on" else ent.state
-                    )
+                    if key == "miner_is_on":
+                        state[key] = ent.state
+                    else:
+                        state[key] = float(ent.state)
                 except (ValueError, TypeError):
-                    state[key] = 0.0 if key != "miner_is_on" else "off"
+                    state[key] = "off" if key == "miner_is_on" else 0.0
             else:
-                state[key] = 0.0 if key != "miner_is_on" else "off"
+                if key == "miner_is_on":
+                    state[key] = "off"
+                elif key == "hours_until_sunrise":
+                    state[key] = None
+                else:
+                    state[key] = 0.0
                 if ent:
                     _LOGGER.warning(
                         "Entity %s is %s, using default", entity_id, ent.state
@@ -146,22 +269,31 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
     def _run_decision(self, state: dict) -> dict:
         """Synchronous ML inference — runs in executor thread."""
         features = features_from_state(state)
+        samples = get_training_sample_count(self.hass_config_path)
+        forecast = float(state.get("forecast_tomorrow") or 0)
+        target_soc = target_soc_from_forecast(forecast)
 
-        # Load model (cached after first load)
         if not self._model_loaded:
             self._model, _ = load_model(self.hass_config_path)
             self._model_loaded = True
 
-        if self._model is not None:
+        use_model = (
+            self._model is not None and samples >= self.min_samples_for_model
+        )
+
+        if use_model:
             import numpy as np
 
-            X = np.array([features])
-            predicted_power = int(self._model.predict(X)[0])
-            mode = "day_solar" if state.get("solar_power_total", 0) > 100 else "night_drain"
+            predicted_power = int(self._model.predict(np.array([features]))[0])
+            mode = (
+                "day_solar"
+                if float(state.get("solar_power_total") or 0) > 100
+                else "night_drain"
+            )
             decision = {
                 "miner_active": "on" if predicted_power >= MINER_POWER_MIN else "off",
                 "miner_power": predicted_power,
-                "target_soc_by_sunrise": 30,
+                "target_soc_by_sunrise": target_soc,
                 "mode": mode,
                 "reason": "ML model prediction",
             }
@@ -171,23 +303,22 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
             source = "rule_teacher"
 
         decision["_soc"] = state.get("battery_soc", 50)
+        decision["_grid_power"] = state.get("grid_power", 0)
         decision = validate_decision(decision)
         decision["source"] = source
-        decision["training_samples"] = get_training_sample_count(self.hass_config_path)
-        decision["timestamp"] = datetime.now().isoformat()
+        decision["training_samples"] = samples
+        decision["timestamp"] = utc_now_iso()
 
         return decision
 
     async def _apply_decision(self, decision: dict) -> None:
         """Apply miner switch and power level via HA services."""
         try:
-            # Set switch
             service = "turn_on" if decision["miner_active"] == "on" else "turn_off"
             await self.hass.services.async_call(
                 "switch", service, {"entity_id": self.miner_switch}, blocking=True
             )
 
-            # Set power level if miner is on
             if decision["miner_active"] == "on":
                 await self.hass.services.async_call(
                     "number",
@@ -216,19 +347,28 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
 
     async def async_retrain(self, force: bool = False) -> dict:
         """Trigger model retraining."""
-        from .models import run_retrain
+        if self._retraining:
+            _LOGGER.info("Retrain already in progress")
+            return self.metrics
 
-        metrics = await self.hass.async_add_executor_job(
-            run_retrain,
-            self.hass_config_path,
-            self.min_samples_for_model,
-            force,
-        )
-
-        # Invalidate model cache so next cycle loads the new model
-        self.invalidate_model_cache()
-
-        return metrics
+        self._retraining = True
+        try:
+            live_state = await self._read_entity_states()
+            async with self._csv_lock:
+                metrics = await self.hass.async_add_executor_job(
+                    run_retrain,
+                    self.hass_config_path,
+                    self.min_samples_for_model,
+                    force,
+                    live_state,
+                )
+            self.metrics = metrics
+            self.training_samples = metrics.get("total_samples", self.training_samples)
+            self.invalidate_model_cache()
+            self.async_update_listeners()
+            return metrics
+        finally:
+            self._retraining = False
 
     async def async_request_decision(self) -> dict:
         """Trigger an immediate decision cycle."""
@@ -237,11 +377,10 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
 
     def get_status(self) -> dict:
         """Return current status for service response."""
-        metrics = load_metrics(self.hass_config_path)
         return {
             "auto_control": self.auto_control,
             "last_decision": self.last_decision,
-            "training_samples": get_training_sample_count(self.hass_config_path),
+            "training_samples": self.training_samples,
             "model_loaded": self._model is not None,
-            "metrics": metrics,
+            "metrics": self.metrics,
         }

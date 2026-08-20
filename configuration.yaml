@@ -1,0 +1,1392 @@
+# Loads default set of integrations. Do not remove.
+default_config:
+# Text to speech
+# Example configuration.yaml entry
+# InfluxDB Configuration (optional — uncomment and fill in your own values)
+#influxdb:
+#  api_version: 2
+#  host: !secret influxdb_host
+#  port: 8086
+#  token: !secret influxdb_token
+#  organization: !secret influxdb_organization
+#  bucket: homeassistant
+
+
+bluetooth:
+tts:
+  - platform: google_translate
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
+#sensors: !include sensors.yaml
+
+shell_command:
+  get_mrr_balance: 'python3 /config/scripts/get_mrr_balance.py'
+  run_mining_ml_decision: 'python3 /config/scripts/mining_ml_decision.py --soc {{ states("sensor.infinisolar_v_multiphase_x_3_battery_state_of_charge") | float(0) }} --solar {{ states("sensor.solar_power_total") | float(0) }} --surplus {{ states("sensor.solar_surplus_power") | float(0) }} --voltage {{ states("sensor.infinisolar_v_multiphase_x_3_battery_1_voltage") | float(0) }} --current {{ states("sensor.battery_current_total") | float(0) }} --bpower {{ states("sensor.battery_power_total") | float(0) }} --kwh {{ states("sensor.battery_kwh_available") | float(0) }} --drain {{ states("sensor.battery_drain_rate_kwh_per_hour") | float(0) }} --hmin {{ states("sensor.battery_hours_to_minimum") | float(0) }} --hsun {{ states("sensor.hours_until_sunrise") | float(0) }} --total_load {{ states("sensor.total_load_power") | float(0) | abs }} --miner_actual {{ states("sensor.antminer_miner_consumption_2") | float(0) }} --forecast {{ states("sensor.solcast_pv_forecast_atelier_forecast_tomorrow") | float(0) }} --forecast3 {{ states("sensor.solcast_pv_forecast_forecast_day_3") | float(0) }} --grid {{ states("sensor.victron_vebus_activein_l1_power_227") | float(0) }} --viability {{ states("sensor.mining_viability_score") | float(0) }} --miner_power {{ states("number.antminer_power_limit_2") | float(0) }} --miner_state {{ states("switch.antminer_active_2") }}'
+  run_mining_ml_retrain: 'python3 /config/scripts/mining_ml_retrain.py'
+
+input_boolean:
+  oil_pid_enabled:
+    name: PID Enabled
+
+  oil_pid_invert:
+    name: PID Invert
+
+  # ── BOILER CONTROL ──────────────────────────────────────────────────────
+  boiler_auto_enabled:
+    name: "Boiler Auto Control"
+    icon: mdi:water-boiler-auto
+
+  boiler_solar_boost_enabled:
+    name: "Boiler Solar Boost"
+    icon: mdi:solar-power
+
+input_select:
+  oil_pid_round:
+    name: PID Round
+    options:
+      - Floor
+      - Ceil
+      - Round
+
+    
+# Input numbers for tracking stats and settings
+input_number:
+  ml_training_samples_count:
+    name: ML Training Samples
+    min: 0
+    max: 100000
+    step: 1
+    initial: 0
+
+  oil_pid_output:
+    name: Oil PID Output
+    min: 0
+    max: 120
+    step: 0.1
+
+  oil_pid_kp:
+    name: PID Kp
+    min: 0
+    max: 100
+    step: 0.01
+
+  oil_pid_ki:
+    name: PID Ki
+    min: 0
+    max: 10
+    step: 0.01
+
+  oil_pid_kd:
+    name: PID Kd
+    min: 0
+    max: 10
+    step: 0.01
+
+  oil_pid_sample_time:
+    name: PID Sample Time
+    min: 1
+    max: 300
+    step: 1
+
+  oil_pid_min_output:
+    name: PID Min Output
+    min: -20
+    max: 100
+    step: 1
+
+  oil_pid_max_output:
+    name: PID Max Output
+    min: 0
+    max: 120
+    step: 1
+
+  oil_pid_windup:
+    name: PID Windup
+    min: 0
+    max: 100
+    step: 1
+
+  oil_pid_precision:
+    name: PID Precision
+    min: 0
+    max: 4
+    step: 1
+
+#old parameters
+  oil_temp_target:
+    name: "Oil Temperature Target"
+    min: 10
+    max: 65
+    step: 0.5
+    unit_of_measurement: "°C"
+    icon: mdi:thermometer
+
+  # ── BOILER SCHEDULE TEMPERATURES ────────────────────────────────────────
+  boiler_temp_night:
+    name: "Boiler Night (00-06h)"
+    min: 30
+    max: 75
+    step: 1
+    unit_of_measurement: "°C"
+    icon: mdi:thermometer
+    mode: slider
+
+  boiler_temp_morning:
+    name: "Boiler Morning (06-10h)"
+    min: 30
+    max: 75
+    step: 1
+    unit_of_measurement: "°C"
+    icon: mdi:thermometer
+    mode: slider
+
+  boiler_temp_day:
+    name: "Boiler Day (10-17h)"
+    min: 30
+    max: 75
+    step: 1
+    unit_of_measurement: "°C"
+    icon: mdi:thermometer
+    mode: slider
+
+  boiler_temp_evening:
+    name: "Boiler Evening (17-22h)"
+    min: 30
+    max: 75
+    step: 1
+    unit_of_measurement: "°C"
+    icon: mdi:thermometer
+    mode: slider
+
+  boiler_temp_late:
+    name: "Boiler Late Night (22-24h)"
+    min: 30
+    max: 75
+    step: 1
+    unit_of_measurement: "°C"
+    icon: mdi:thermometer
+    mode: slider
+
+  boiler_temp_weekend:
+    name: "Boiler Weekend (Sat-Sun)"
+    min: 30
+    max: 75
+    step: 1
+    unit_of_measurement: "°C"
+    icon: mdi:thermometer
+    mode: slider
+
+  boiler_hysteresis:
+    name: "Boiler Hysteresis Band"
+    min: 2
+    max: 4
+    step: 1
+    unit_of_measurement: "°C"
+    icon: mdi:thermometer-lines
+    mode: slider
+   
+  
+  anticipation_factor:
+    name: Anticipation Factor
+    min: 0.
+    max: 10
+    step: 0.1
+    mode: slider
+  anticipation_threshold:
+    name: Anticipation Threshold
+    min: 0.
+    max: 10
+    step: 0.1
+    mode: slider
+  cooling_hysteresis:
+    name: Cooling Hysteresis
+    min: 0.1
+    max: 5
+    step: 0.1
+    mode: slider
+
+counter:
+  cooling_corrections:
+    name: Cooling Corrections in 6h
+    initial: 0
+    step: 1
+
+input_datetime:
+  last_cooling_cycle:
+    name: Last Cooling Cycle
+    has_date: true
+    has_time: true    
+
+homeassistant:
+  external_url: !secret external_url
+  internal_url: !secret internal_url
+  time_zone: Europe/Bucharest
+
+#http:
+#  ssl_certificate: /ssl/fullchain.pem
+#  ssl_key: /ssl/privkey.pem
+#  server_port: 8123
+#  use_x_forwarded_for: true
+#  trusted_proxies:
+#    - 127.0.0.1
+#    - ::1
+
+# Example configuration.yaml entry
+utility_meter:
+  energy:
+    source: sensor.enel_grid
+    cycle: monthly
+    net_consumption: true
+
+# ===========================
+# RESTful Sensors
+# ===========================
+
+rest:
+
+        
+  # Replace with your inverter's IP and port
+  - resource: "http://YOUR_INVERTER_IP:5000/api/v1/inverter/data/status"
+    scan_interval: 30
+    timeout: 10
+    sensor:
+    # Solar PV
+        - name: "Inverter PV1 Power"
+          value_template: "{{ value_json.pv.pv1_power | int(0) }}"
+          unit_of_measurement: "W"
+          device_class: "power"
+          state_class: "measurement"
+          icon: "mdi:solar-panel"
+
+# ===========================
+# Sensor Platform: REST
+# ===========================
+
+switch:
+  - platform: snmp
+    name: "PDU Outlet AA3"
+    host: !secret pdu_host
+    version: "3"
+    username: !secret snmp_username
+    auth_key: !secret snmp_auth_key
+    priv_key: !secret snmp_priv_key
+    auth_protocol: "hmac-sha"
+    priv_protocol: "aes-cfb-128"
+    baseoid: ".1.3.6.1.4.1.1718.4.1.8.5.1.2.1.1.3"   # AA3 control
+    payload_on: 1
+    payload_off: 2
+    # Optional: value_template to read state back (if supported)
+    # value_template: "{{ value }}"
+
+  - platform: snmp
+    name: "PDU Outlet AA4"
+    host: !secret pdu_host
+    version: "3"
+    username: !secret snmp_username
+    auth_key: !secret snmp_auth_key
+    priv_key: !secret snmp_priv_key
+    auth_protocol: "hmac-sha"
+    priv_protocol: "aes-cfb-128"
+    baseoid: ".1.3.6.1.4.1.1718.4.1.8.5.1.2.1.1.4"
+    payload_on: 1
+    payload_off: 2
+
+  # Boiler heating elements
+  - platform: snmp
+    name: "PDU Outlet AA7"
+    host: !secret pdu_host
+    version: "3"
+    username: !secret snmp_username
+    auth_key: !secret snmp_auth_key
+    priv_key: !secret snmp_priv_key
+    auth_protocol: "hmac-sha"
+    priv_protocol: "aes-cfb-128"
+    baseoid: ".1.3.6.1.4.1.1718.4.1.8.5.1.2.1.1.7"  # AA7 control
+    payload_on: 1
+    payload_off: 2
+
+  - platform: snmp
+    name: "PDU Outlet AA8"
+    host: !secret pdu_host
+    version: "3"
+    username: !secret snmp_username
+    auth_key: !secret snmp_auth_key
+    priv_key: !secret snmp_priv_key
+    auth_protocol: "hmac-sha"
+    priv_protocol: "aes-cfb-128"
+    baseoid: ".1.3.6.1.4.1.1718.4.1.8.5.1.2.1.1.8"  # AA8 control
+    payload_on: 1
+    payload_off: 2
+
+  - platform: snmp
+    name: "PDU Outlet AA9"
+    host: !secret pdu_host
+    version: "3"
+    username: !secret snmp_username
+    auth_key: !secret snmp_auth_key
+    priv_key: !secret snmp_priv_key
+    auth_protocol: "hmac-sha"
+    priv_protocol: "aes-cfb-128"
+    baseoid: ".1.3.6.1.4.1.1718.4.1.8.5.1.2.1.1.9"  # AA9 control
+    payload_on: 1
+    payload_off: 2
+    
+  - platform: snmp
+    name: "PDU Outlet AA18"
+    host: !secret pdu_host
+    version: "3"
+    username: !secret snmp_username
+    auth_key: !secret snmp_auth_key
+    priv_key: !secret snmp_priv_key
+    auth_protocol: "hmac-sha"
+    priv_protocol: "aes-cfb-128"
+    baseoid: ".1.3.6.1.4.1.1718.4.1.8.5.1.2.1.1.18"  # AA18 control
+    payload_on: 1
+    payload_off: 2
+
+
+sensor:
+  - platform: snmp
+    name: "Outlet AA3 State"
+    host: !secret pdu_host
+    version: "3"
+    username: !secret snmp_username
+    auth_key: !secret snmp_auth_key
+    priv_key: !secret snmp_priv_key
+    auth_protocol: "hmac-sha"
+    priv_protocol: "aes-cfb-128"
+    baseoid: ".1.3.6.1.4.1.1718.4.1.8.3.1.1.1.1.3"   # Note the .3 at the end
+
+  - platform: snmp
+    name: "Outlet AA3 Power"
+    host: !secret pdu_host
+    version: "3"
+    username: !secret snmp_username
+    auth_key: !secret snmp_auth_key
+    priv_key: !secret snmp_priv_key
+    auth_protocol: "hmac-sha"
+    priv_protocol: "aes-cfb-128"
+    baseoid: ".1.3.6.1.4.1.1718.4.1.8.3.1.7.1.1.3"   # Note the .3 at the end
+    unit_of_measurement: "W"
+
+  - platform: snmp
+    name: "Outlet AA3 Energy"
+    host: !secret pdu_host
+    version: "3"
+    username: !secret snmp_username
+    auth_key: !secret snmp_auth_key
+    priv_key: !secret snmp_priv_key
+    auth_protocol: "hmac-sha"
+    priv_protocol: "aes-cfb-128"
+    baseoid: ".1.3.6.1.4.1.1718.4.1.8.3.1.14.1.1.3"  # Note the .3 at the end
+    unit_of_measurement: "kWh"
+    value_template: "{{ value | float / 1000 }}"
+  
+  - platform: snmp
+    name: "Outlet AA4 State"
+    host: !secret pdu_host
+    version: "3"
+    username: !secret snmp_username
+    auth_key: !secret snmp_auth_key
+    priv_key: !secret snmp_priv_key
+    auth_protocol: "hmac-sha"
+    priv_protocol: "aes-cfb-128"
+    baseoid: ".1.3.6.1.4.1.1718.4.1.8.3.1.1.1.1.4"
+
+  - platform: snmp
+    name: "Outlet AA4 Power"
+    host: !secret pdu_host
+    version: "3"
+    username: !secret snmp_username
+    auth_key: !secret snmp_auth_key
+    priv_key: !secret snmp_priv_key
+    auth_protocol: "hmac-sha"
+    priv_protocol: "aes-cfb-128"
+    baseoid: ".1.3.6.1.4.1.1718.4.1.8.3.1.7.1.1.4"           # Example OID for power (Watts)
+    unit_of_measurement: "W"
+
+  - platform: snmp
+    name: "Outlet AA4 Energy"
+    host: !secret pdu_host
+    version: "3"
+    username: !secret snmp_username
+    auth_key: !secret snmp_auth_key
+    priv_key: !secret snmp_priv_key
+    auth_protocol: "hmac-sha"
+    priv_protocol: "aes-cfb-128"
+    baseoid: ".1.3.6.1.4.1.1718.4.1.8.3.1.14.1.1.4"           # Example OID for energy (kWh)
+    unit_of_measurement: "kWh"
+    value_template: "{{ value | float / 1000 }}"
+
+  # Boiler heating elements — AA7, AA8, AA9
+  - platform: snmp
+    name: "Outlet AA7 State"
+    host: !secret pdu_host
+    version: "3"
+    username: !secret snmp_username
+    auth_key: !secret snmp_auth_key
+    priv_key: !secret snmp_priv_key
+    auth_protocol: "hmac-sha"
+    priv_protocol: "aes-cfb-128"
+    baseoid: ".1.3.6.1.4.1.1718.4.1.8.3.1.1.1.1.7"
+
+  - platform: snmp
+    name: "Outlet AA7 Power"
+    host: !secret pdu_host
+    version: "3"
+    username: !secret snmp_username
+    auth_key: !secret snmp_auth_key
+    priv_key: !secret snmp_priv_key
+    auth_protocol: "hmac-sha"
+    priv_protocol: "aes-cfb-128"
+    baseoid: ".1.3.6.1.4.1.1718.4.1.8.3.1.7.1.1.7"
+    unit_of_measurement: "W"
+
+  - platform: snmp
+    name: "Outlet AA7 Energy"
+    host: !secret pdu_host
+    version: "3"
+    username: !secret snmp_username
+    auth_key: !secret snmp_auth_key
+    priv_key: !secret snmp_priv_key
+    auth_protocol: "hmac-sha"
+    priv_protocol: "aes-cfb-128"
+    baseoid: ".1.3.6.1.4.1.1718.4.1.8.3.1.14.1.1.7"
+    unit_of_measurement: "kWh"
+    value_template: "{{ value | float / 1000 }}"
+
+  - platform: snmp
+    name: "Outlet AA8 State"
+    host: !secret pdu_host
+    version: "3"
+    username: !secret snmp_username
+    auth_key: !secret snmp_auth_key
+    priv_key: !secret snmp_priv_key
+    auth_protocol: "hmac-sha"
+    priv_protocol: "aes-cfb-128"
+    baseoid: ".1.3.6.1.4.1.1718.4.1.8.3.1.1.1.1.8"
+
+  - platform: snmp
+    name: "Outlet AA8 Power"
+    host: !secret pdu_host
+    version: "3"
+    username: !secret snmp_username
+    auth_key: !secret snmp_auth_key
+    priv_key: !secret snmp_priv_key
+    auth_protocol: "hmac-sha"
+    priv_protocol: "aes-cfb-128"
+    baseoid: ".1.3.6.1.4.1.1718.4.1.8.3.1.7.1.1.8"
+    unit_of_measurement: "W"
+
+  - platform: snmp
+    name: "Outlet AA8 Energy"
+    host: !secret pdu_host
+    version: "3"
+    username: !secret snmp_username
+    auth_key: !secret snmp_auth_key
+    priv_key: !secret snmp_priv_key
+    auth_protocol: "hmac-sha"
+    priv_protocol: "aes-cfb-128"
+    baseoid: ".1.3.6.1.4.1.1718.4.1.8.3.1.14.1.1.8"
+    unit_of_measurement: "kWh"
+    value_template: "{{ value | float / 1000 }}"
+
+  - platform: snmp
+    name: "Outlet AA9 State"
+    host: !secret pdu_host
+    version: "3"
+    username: !secret snmp_username
+    auth_key: !secret snmp_auth_key
+    priv_key: !secret snmp_priv_key
+    auth_protocol: "hmac-sha"
+    priv_protocol: "aes-cfb-128"
+    baseoid: ".1.3.6.1.4.1.1718.4.1.8.3.1.1.1.1.9"
+
+  - platform: snmp
+    name: "Outlet AA9 Power"
+    host: !secret pdu_host
+    version: "3"
+    username: !secret snmp_username
+    auth_key: !secret snmp_auth_key
+    priv_key: !secret snmp_priv_key
+    auth_protocol: "hmac-sha"
+    priv_protocol: "aes-cfb-128"
+    baseoid: ".1.3.6.1.4.1.1718.4.1.8.3.1.7.1.1.9"
+    unit_of_measurement: "W"
+
+  - platform: snmp
+    name: "Outlet AA9 Energy"
+    host: !secret pdu_host
+    version: "3"
+    username: !secret snmp_username
+    auth_key: !secret snmp_auth_key
+    priv_key: !secret snmp_priv_key
+    auth_protocol: "hmac-sha"
+    priv_protocol: "aes-cfb-128"
+    baseoid: ".1.3.6.1.4.1.1718.4.1.8.3.1.14.1.1.9"
+    unit_of_measurement: "kWh"
+    value_template: "{{ value | float / 1000 }}"
+    
+  - platform: snmp
+    name: "Outlet AA18 State"
+    host: !secret pdu_host
+    version: "3"
+    username: !secret snmp_username
+    auth_key: !secret snmp_auth_key
+    priv_key: !secret snmp_priv_key
+    auth_protocol: "hmac-sha"
+    priv_protocol: "aes-cfb-128"
+    baseoid: ".1.3.6.1.4.1.1718.4.1.8.3.1.1.1.1.18"
+
+  - platform: snmp
+    name: "Outlet AA18 Power"
+    host: !secret pdu_host
+    version: "3"
+    username: !secret snmp_username
+    auth_key: !secret snmp_auth_key
+    priv_key: !secret snmp_priv_key
+    auth_protocol: "hmac-sha"
+    priv_protocol: "aes-cfb-128"
+    baseoid: ".1.3.6.1.4.1.1718.4.1.8.3.1.7.1.1.18"
+    unit_of_measurement: "W"
+
+  - platform: snmp
+    name: "Outlet AA18 Energy"
+    host: !secret pdu_host
+    version: "3"
+    username: !secret snmp_username
+    auth_key: !secret snmp_auth_key
+    priv_key: !secret snmp_priv_key
+    auth_protocol: "hmac-sha"
+    priv_protocol: "aes-cfb-128"
+    baseoid: ".1.3.6.1.4.1.1718.4.1.8.3.1.14.1.1.18"
+    unit_of_measurement: "kWh"
+    value_template: "{{ value | float / 1000 }}"
+
+  - platform: pid_controller
+    name: Oil Cooling PID
+    enabled: '{{ is_state("input_boolean.oil_pid_enabled", "on") }}'
+    set_point: '{{ states("input_number.oil_temp_target") }}'
+    p: '{{ states("input_number.oil_pid_kp") }}'
+    i: '{{ states("input_number.oil_pid_ki") }}'
+    d: '{{ states("input_number.oil_pid_kd") }}'
+    entity_id: sensor.tasmota_ds18b20_temperature
+    invert: '{{ is_state("input_boolean.oil_pid_invert", "on") }}'
+    precision: '{{ states("input_number.oil_pid_precision") }}'
+    minimum: '{{ states("input_number.oil_pid_min_output") }}'
+    maximum: '{{ states("input_number.oil_pid_max_output") }}'
+    round: '{{ states("input_select.oil_pid_round") }}'
+    sample_time: '{{ states("input_number.oil_pid_sample_time") }}'
+    windup: '{{ states("input_number.oil_pid_windup") }}'
+
+  - platform: derivative
+    source: sensor.tasmota_ds18b20_temperature
+    name: "Temperature Rise Rate"
+    round: 2
+    unit_time: min
+    time_window: 00:02:00
+    
+
+template:
+  - sensor:
+
+  # Stats sensor with proper default value handling
+      - name: "Instant RON per kWh MiningDutch"
+        unit_of_measurement: "RON/kWh"
+        state: >
+          {% set profit_24h = states('sensor.grs_profitability') | float(0) %}
+          {% set hashrate = 10.8 %}
+          {% set btc_usd = states('sensor.btc_to_usd') | float(0) %}
+          {% set usd_ron = states('sensor.usd_to_ron') | float(0) %}
+          {% set power_watt = states('sensor.tasmota_energy_power') | float(0) %}
+          {% set btc_earned_24h = profit_24h * hashrate %}
+          {% set ron_earned_24h = btc_earned_24h * btc_usd * usd_ron %}
+          {% set kwh_24h = (power_watt / 1000) * 24 %}
+          {% if kwh_24h > 0 %}
+            {{ (ron_earned_24h / kwh_24h) | round(2) }}
+          {% else %}
+            0
+          {% endif %}
+      - name: "Instant RON per kWh Zergpool"
+        unit_of_measurement: "RON/kWh"
+        state: >
+          {% set profit_24h = states('sensor.zergpool_profitability') | float(0) %}
+          {% set hashrate = 10.8 %}
+          {% set btc_usd = states('sensor.btc_to_usd') | float(0) %}
+          {% set usd_ron = states('sensor.usd_to_ron') | float(0) %}
+          {% set power_watt = states('sensor.tasmota_energy_power') | float(0) %}
+          {% set btc_earned_24h = profit_24h * hashrate %}
+          {% set ron_earned_24h = btc_earned_24h * btc_usd * usd_ron %}
+          {% set kwh_24h = (power_watt / 1000) * 24 %}
+          {% if kwh_24h > 0 %}
+            {{ (ron_earned_24h / kwh_24h) | round(2) }}
+          {% else %}
+            0
+          {% endif %}
+     
+      - name: "Cooling Stats"
+        state: >
+          {% if is_state('binary_sensor.cooling_active', 'on') %}
+            Active
+          {% else %}
+            Inactive
+          {% endif %}
+        attributes:
+          max_temp: >
+            {% if states('input_number.cooling_max_temp') not in ['unknown', 'unavailable', 'none', ''] %}
+              {{ states('input_number.cooling_max_temp') }}
+            {% else %}
+              unknown
+            {% endif %}
+          min_temp: >
+            {% if states('input_number.cooling_min_temp') not in ['unknown', 'unavailable', 'none', ''] %}
+              {{ states('input_number.cooling_min_temp') }}
+            {% else %}
+              unknown
+            {% endif %}
+          duration: >
+            {% if states('input_number.cooling_duration') not in ['unknown', 'unavailable', 'none', ''] %}
+              {{ states('input_number.cooling_duration') }}
+            {% else %}
+              0
+            {% endif %}
+          
+  # Binary sensor to track cooling state with debounce
+  - binary_sensor:
+      - name: "Grid Connected"
+        state: "{{ is_state('sensor.victron_vebus_activein_activeinput_227', 'AC_INPUT_1') }}"
+        icon: >-
+          {% if is_state('sensor.victron_vebus_activein_activeinput_227', 'AC_INPUT_1') %}
+            mdi:power-plug
+          {% else %}
+            mdi:power-plug-off
+          {% endif %}
+
+      - name: "Cooling Active"
+        state: "{{ is_state('switch.cooling_oil', 'on') }}"
+        delay_off:
+          seconds: 5
+
+  - sensor:
+      - name: "Cooling Overshoot"
+        unique_id: cooling_overshoot
+        unit_of_measurement: "°C"
+        state: >-
+          {% set min_after_cooling = state_attr('sensor.temperature_stats', 'min_temp_after_cooling') | float(0) %}
+          {% set target = states('input_number.oil_temp_target') | float %}
+          {% if min_after_cooling > 0 %}
+            {{ target - min_after_cooling }}
+          {% else %}
+            {{ 0 }}
+          {% endif %}
+          
+      - name: "Cooling Undershoot"
+        unique_id: cooling_undershoot
+        unit_of_measurement: "°C"
+        state: >-
+          {% set max_before_cooling = state_attr('sensor.temperature_stats', 'max_temp_before_cooling') | float(0) %}
+          {% set target = states('input_number.oil_temp_target') | float %}
+          {% if max_before_cooling > 0 %}
+            {{ max_before_cooling - target }}
+          {% else %}
+            {{ 0 }}
+          {% endif %}
+          
+      - name: "Cooling Cycle Duration"
+        unique_id: cooling_cycle_duration
+        unit_of_measurement: "min"
+        state: >-
+          {% if is_state_attr('sensor.temperature_stats', 'last_cooling_duration', 'unknown') %}
+            0
+          {% else %}
+            {{ state_attr('sensor.temperature_stats', 'last_cooling_duration') | float(0) / 60 }}
+          {% endif %}
+          
+      - name: "Cooling Temperature Error"
+        unique_id: cooling_temperature_error
+        state: >
+          {{ (states('sensor.tasmota_ds18b20_temperature') | float - 
+             states('input_number.cooling_target_temp') | float) | round(2) }}
+        unit_of_measurement: "°C"
+  - sensor:
+      - name: "Cooling Temperature Error"
+        unique_id: cooling_temperature_error
+        state: >
+          {{ (states('sensor.tasmota_ds18b20_temperature') | float - 
+             states('input_number.cooling_target_temp') | float) | round(2) }}
+        unit_of_measurement: "°C"
+      
+      - name: "Cooling Duty Cycle"
+        unique_id: cooling_duty_cycle
+        state: "{{ state_attr('automation.immersion_cooling_pid_controller', 'pid_output') | default(0) | round(1) }}"
+        unit_of_measurement: "%"
+        
+      - name: "Temperature Stability Score"
+        unique_id: temperature_stability_score
+        state: >
+          {% set samples = state_attr('sensor.temperature_stability_score', 'samples') | default([]) %}
+          {% set current_error = states('sensor.cooling_temperature_error') | float %}
+          {% set new_samples = samples + [current_error] %}
+          {% if new_samples | length > 60 %}
+            {% set new_samples = new_samples[1:] %}
+          {% endif %}
+          {% set variance = 0 %}
+          {% if new_samples | length > 10 %}
+            {% set mean = new_samples | sum / new_samples | length %}
+            {% for sample in new_samples %}
+              {% set variance = variance + (sample - mean) ** 2 %}
+            {% endfor %}
+            {% set variance = variance / new_samples | length %}
+            {% set stability = 100 - (variance * 10) | round %}
+            {% set stability = [0, [100, stability]|min]|max %}
+            {{ stability }}
+          {% else %}
+            50
+          {% endif %}
+        unit_of_measurement: "%"
+        attributes:
+          samples: >
+            {% set samples = state_attr('sensor.temperature_stability_score', 'samples') | default([]) %}
+            {% set current_error = states('sensor.cooling_temperature_error') | float %}
+            {% set new_samples = samples + [current_error] %}
+            {% if new_samples | length > 60 %}
+              {% set new_samples = new_samples[1:] %}
+            {% endif %}
+            {{ new_samples }}
+  - sensor:
+      - name: "Predicted Temperature"
+        state: >
+          {% set current_temp = states('sensor.tasmota_ds18b20_temperature') | float %}
+          {% set rise_rate = states('sensor.temperature_rise_rate') | float(0) %}
+          {% set factor = states('input_number.anticipation_factor') | float %}
+          {{ (current_temp + (rise_rate * factor)) | round(1) }}
+        unit_of_measurement: "°C"    
+  
+      - name: "Chip-Oil Temperature Delta"
+        state: >
+          {% set chip_temp = (states('sensor.antminer_board_0_board_temperature')|float + 
+                             states('sensor.antminer_board_1_board_temperature')|float + 
+                             states('sensor.antminer_board_2_board_temperature')|float) / 3 %}
+          {% set oil_temp = states('sensor.tasmota_ds18b20_temperature')|float %}
+          {{ (chip_temp - oil_temp) | round(1) }}
+        unit_of_measurement: "°C"    
+
+      - name: "Cooling Efficiency"
+        state: >
+          {% set delta = states('sensor.chip_oil_temperature_delta')|float(0) %}
+          {% if delta > 25 %}
+            {{ "Excellent" }}
+          {% elif delta > 20 %}
+            {{ "Good" }}
+          {% elif delta > 15 %}
+            {{ "Average" }}
+          {% else %}
+            {{ "Poor" }}
+          {% endif %}
+        icon: >
+          {% set delta = states('sensor.chip_oil_temperature_delta')|float(0) %}
+          {% if delta > 25 %}
+            {{ "mdi:thumb-up" }}
+          {% elif delta > 20 %}
+            {{ "mdi:check-circle" }}
+          {% elif delta > 15 %}
+            {{ "mdi:alert" }}
+          {% else %}
+            {{ "mdi:alert-circle" }}
+          {% endif %}
+
+      # ═══════════════════════════════════════════════════════════════════
+      # MINING DECISION ENGINE SENSORS
+      # ═══════════════════════════════════════════════════════════════════
+
+      # ─── TOTAL SOLAR POWER (all 5 MPPT sources combined) ───────────────
+      - name: "solar_power_total"
+        unique_id: solar_power_total
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        state: >
+          {% set i1 = states('sensor.infinisolar_v_multiphase_x_3_inverter_1_pv_power') | float(0) %}
+          {% set i2 = states('sensor.infinisolar_v_multiphase_x_3_inverter_2_pv_power') | float(0) %}
+          {% set i3 = states('sensor.infinisolar_v_multiphase_x_3_inverter_3_pv_power') | float(0) %}
+          {% set v1 = states('sensor.victron_solarcharger_yield_power_226') | float(0) %}
+          {% set v2 = states('sensor.victron_solarcharger_yield_power_224') | float(0) %}
+          {{ (i1 + i2 + i3 + v1 + v2) | round(0) }}
+
+      # ─── SOLAR SURPLUS (solar minus house load WITHOUT miners) ───────────
+      - name: "solar_surplus_power"
+        unique_id: solar_surplus_power
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        state: >
+          {% set solar = states('sensor.solar_power_total') | float(0) %}
+          {% set total_load = states('sensor.total_load_power') | float(0) | abs %}
+          {% set miner_actual = states('sensor.antminer_miner_consumption_2') | float(0) %}
+          {% set house_load = total_load - miner_actual %}
+          {{ (solar - house_load) | round(0) }}
+
+      # ─── TOTAL BATTERY CURRENT (Victron + Infinisolar combined) ─────────
+      - name: "battery_current_total"
+        unique_id: battery_current_total
+        unit_of_measurement: "A"
+        device_class: current
+        state_class: measurement
+        state: >
+          {% set a1 = states('sensor.victron_battery_current') | float(0) %}
+          {% set a2 = states('sensor.infinisolar_v_multiphase_x_3_battery_1_current') | float(0) %}
+          {% set a1_ok = states('sensor.victron_battery_current') not in ['unavailable', 'unknown'] %}
+          {% set a2_ok = states('sensor.infinisolar_v_multiphase_x_3_battery_1_current') not in ['unavailable', 'unknown'] %}
+          {{ ((a1 if a1_ok else 0) + (a2 if a2_ok else 0)) | round(1) }}
+
+      # ─── BATTERY POWER (watts) ──────────────────────────────────────────
+      - name: "battery_power_total"
+        unique_id: battery_power_total
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        state: >
+            {% set v = states('sensor.infinisolar_v_multiphase_x_3_battery_1_voltage') | float(0) %}
+            {% set a1 = states('sensor.victron_battery_current') | float(0) * 2 %}
+            {% set a2 = states('sensor.infinisolar_v_multiphase_x_3_battery_1_current') | float(0) %}
+            {{ (v * (a1 + a2)) | round(0) }}
+
+      # ─── PYLONTECH PACK CURRENT (diagnostic / balance check only) ───────
+      - name: "pylontech_pack_current_total"
+        unique_id: pylontech_pack_current_total
+        unit_of_measurement: "A"
+        device_class: current
+        state_class: measurement
+        state: >
+          {% set c1 = states('sensor.infinisolar_v_multiphase_x_3_battery_1_current') | float(0) %}
+          {% set c2 = states('sensor.infinisolar_v_multiphase_x_3_battery_2_current') | float(0) %}
+          {% set c3 = states('sensor.infinisolar_v_multiphase_x_3_battery_3_current') | float(0) %}
+          {% set c4 = states('sensor.infinisolar_v_multiphase_x_3_battery_4_current') | float(0) %}
+          {% set c5 = states('sensor.infinisolar_v_multiphase_x_3_battery_5_current') | float(0) %}
+          {% set c6 = states('sensor.infinisolar_v_multiphase_x_3_battery_6_current') | float(0) %}
+          {% set c7 = states('sensor.infinisolar_v_multiphase_x_3_battery_7_current') | float(0) %}
+          {% set c8 = states('sensor.infinisolar_v_multiphase_x_3_battery_8_current') | float(0) %}
+          {% set c9 = states('sensor.infinisolar_v_multiphase_x_3_battery_9_current') | float(0) %}
+          {{ (c1+c2+c3+c4+c5+c6+c7+c8+c9) | round(1) }}
+
+      # ─── BATTERY kWh AVAILABLE ABOVE SAFE MINIMUM ───────────────────────
+      # Total bank = 69.6 kWh (48 kWh Victron + 21.6 kWh Pylontech 9×2.4)
+      - name: "battery_kwh_available"
+        unique_id: battery_kwh_available
+        unit_of_measurement: "kWh"
+        state_class: measurement
+        state: >
+          {% set soc      = states('sensor.infinisolar_v_multiphase_x_3_battery_state_of_charge') | float(0) %}
+          {% set capacity = 69.6 %}
+          {% set min_soc  = 12 %}
+          {{ (((soc - min_soc) / 100) * capacity) | round(2) }}
+
+      # ─── BATTERY DRAIN RATE (kWh per hour at current discharge) ────────
+      - name: "battery_drain_rate_kwh_per_hour"
+        unique_id: battery_drain_rate_kwh_per_hour
+        unit_of_measurement: "kWh/h"
+        state_class: measurement
+        state: >
+          {% set power = states('sensor.battery_power_total') | float(0) %}
+          {% if power < 0 %}
+            {{ (power / 1000 * -1) | round(3) }}
+          {% else %}
+            0
+          {% endif %}
+
+      # ─── ESTIMATED HOURS TO REACH 12% SoC ──────────────────────────────
+      - name: "battery_hours_to_minimum"
+        unique_id: battery_hours_to_minimum
+        unit_of_measurement: "h"
+        state_class: measurement
+        state: >
+          {% set kwh_left = states('sensor.battery_kwh_available') | float(0) %}
+          {% set drain    = states('sensor.battery_drain_rate_kwh_per_hour') | float(0) %}
+          {% if drain > 0 %}
+            {{ (kwh_left / drain) | round(1) }}
+          {% else %}
+            99
+          {% endif %}
+
+      # ─── HOURS UNTIL SUNRISE ────────────────────────────────────────────
+      - name: "hours_until_sunrise"
+        unique_id: hours_until_sunrise
+        unit_of_measurement: "h"
+        state_class: measurement
+        state: >
+          {% set next_rising = state_attr('sun.sun', 'next_rising') %}
+          {% if next_rising %}
+            {{ ((as_timestamp(next_rising) - as_timestamp(now())) / 3600) | round(2) }}
+          {% else %}
+            0
+          {% endif %}
+
+      # ─── MINING VIABILITY SCORE (0-100) ─────────────────────────────────
+      - name: "mining_viability_score"
+        unique_id: mining_viability_score
+        unit_of_measurement: ""
+        state_class: measurement
+        state: >
+          {% set soc           = states('sensor.infinisolar_v_multiphase_x_3_battery_state_of_charge') | float(0) %}
+          {% set forecast_tmrw = states('sensor.solcast_pv_forecast_atelier_forecast_tomorrow') | float(0) %}
+          {% set surplus       = states('sensor.solar_surplus_power') | float(0) %}
+          {% set soc_score      = [soc, 100] | min %}
+          {% set forecast_score = [(forecast_tmrw / 80 * 100), 100] | min %}
+          {% set surplus_score  = [(surplus / 5000 * 100), 100] | min | max(0) %}
+          {{ (soc_score * 0.4 + forecast_score * 0.4 + surplus_score * 0.2) | round(1) }}
+
+      # ─── ML DECISION ENGINE STATUS ────────────────────────────────────
+      # Kept as "ready" for automation trigger compatibility
+      - name: "mining_decision_context"
+        unique_id: mining_decision_context
+        state: "ready"
+
+      - name: "ml_model_source"
+        unique_id: ml_model_source
+        state: >
+          {% set metrics_attr = state_attr('sensor.ml_training_metrics', 'status') %}
+          {% if metrics_attr == 'improved' or metrics_attr == 'trained_no_cv' %}
+            ml_model
+          {% elif metrics_attr == 'insufficient_data' %}
+            rule_teacher
+          {% else %}
+            rule_teacher
+          {% endif %}
+
+      - name: "ml_training_metrics"
+        unique_id: ml_training_metrics
+        state_class: measurement
+        state: >
+          {% set ns = namespace(status='unknown') %}
+          {% if states('sensor.ml_training_metrics') not in ['unavailable', 'unknown'] %}
+            {{ states('sensor.ml_training_metrics') }}
+          {% else %}
+            0
+          {% endif %}
+        attributes:
+          last_retrain: "never"
+          total_samples: 0
+          status: "no_data"
+          val_mae: 0
+          avg_reward: 0
+          model_saved: false
+
+      - name: "ml_total_training_samples"
+        unique_id: ml_total_training_samples
+        state_class: total_increasing
+        state: "{{ states('input_number.ml_training_samples_count') | int(0) }}"
+
+  - sensor:
+      - name: "pv power test"
+        unit_of_measurement: "kWh"
+        device_class: energy
+        attributes:
+          state_class: total_increasing
+          last_reset: '2022-01-01T00:00:00+00:00'
+        state: '{{(states.sensor.productie_atelier.state | float)}}'
+
+      - name: "battery in"
+        unit_of_measurement: "kWh"
+        device_class: energy
+        attributes:
+          state_class: total_increasing
+          last_reset: '1970-01-01T00:00:00+00:00'
+        state: >
+          {% if states('sensor.battery_power') | float(0) >= 0 %}
+            {% set battin = states('sensor.battery_power') | float(0) / 1000 %}
+          {% else %}
+            {% set battin = 0 %}
+          {% endif %}
+          {{ battin }}
+
+      - name: "battery out"
+        unit_of_measurement: "kWh"
+        device_class: energy
+        attributes:
+          state_class: total_increasing
+          last_reset: '1970-01-01T00:00:00+00:00'
+        state: >
+          {% if states('sensor.battery_power') | float(0) <= 0 %}
+            {% set battout = states('sensor.battery_power') | float(0) | abs / 1000 %}
+          {% else %}
+            {% set battout = 0 %}
+          {% endif %}
+          {{ battout }}
+
+      - name: "s1 power"
+        unit_of_measurement: "kWh"
+        device_class: energy
+        attributes:
+          state_class: total_increasing
+          last_reset: '1970-01-01T00:00:00+00:00'
+        state: '{{(states.sensor.mineriis1_power.state | float / 10000 | round(3))}}'
+
+      - name: "enel in"
+        unit_of_measurement: "kWh"
+        device_class: energy
+        attributes:
+          state_class: total_increasing
+          last_reset: '1970-01-01T00:00:00+00:00'
+        state: >
+          {% if states('sensor.enel_grid') | float(0) >= 0 %}
+            {% set gridin = states('sensor.enel_grid') | float(0) / 1000 %}
+          {% else %}
+            {% set gridin = 0 %}
+          {% endif %}
+          {{ gridin }}
+
+      - name: "enel out"
+        unit_of_measurement: "kWh"
+        device_class: energy
+        attributes:
+          state_class: total_increasing
+          last_reset: '1970-01-01T00:00:00+00:00'
+        state: >
+          {% if states('sensor.enel_grid') | float(0) <= 0 %}
+            {% set gridout = states('sensor.enel_grid') | float(0) | abs / 1000 %}
+          {% else %}
+            {% set gridout = 0 %}
+          {% endif %}
+          {{ gridout }}
+
+      - name: "pv power cotet"
+        unit_of_measurement: "kWh"
+        device_class: energy
+        attributes:
+          state_class: total_increasing
+          last_reset: '2022-01-01T00:00:00+00:00'
+        state: '{{(states.sensor.productie_cotet.state | float)}}'
+
+      - name: "pv power atelier"
+        unit_of_measurement: "kWh"
+        device_class: energy
+        attributes:
+          state_class: total_increasing
+          last_reset: '2023-11-11T00:00:00+00:00'
+        state: '{{(states.sensor.productie_atelier.state | float | abs)}}'
+
+      - name: "pv power easun"
+        unit_of_measurement: "Wh"
+        device_class: energy
+        attributes:
+          state_class: total_increasing
+          last_reset: '2023-11-11T00:00:00+00:00'
+        state: '{{(states.sensor.solar2mqtt_pv_generation_sum.state | float)}}'
+
+      - name: "PV Total"
+        unit_of_measurement: "W"
+        device_class: energy
+        state: "{{(states('sensor.pv_power_cotet')|float) + (states('sensor.pv_power_atelier')|float) + (states('sensor.solar2mqtt_pv_charging_power')|float)}}"
+
+      # ─── BOILER ACTIVE TARGET TEMPERATURE ───────────────────────────────
+      # Picks the scheduled minimum temperature based on current hour and day.
+      # Weekend (Sat/Sun) overrides the weekday slots entirely.
+      - name: "boiler_active_target"
+        unique_id: boiler_active_target
+        unit_of_measurement: "°C"
+        state: >
+          {% set h = now().hour %}
+          {% set is_weekend = now().weekday() >= 5 %}
+          {% if is_weekend %}
+            {{ states('input_number.boiler_temp_weekend') | float(45) }}
+          {% elif h < 6 %}
+            {{ states('input_number.boiler_temp_night') | float(40) }}
+          {% elif h < 10 %}
+            {{ states('input_number.boiler_temp_morning') | float(50) }}
+          {% elif h < 17 %}
+            {{ states('input_number.boiler_temp_day') | float(45) }}
+          {% elif h < 22 %}
+            {{ states('input_number.boiler_temp_evening') | float(55) }}
+          {% else %}
+            {{ states('input_number.boiler_temp_late') | float(45) }}
+          {% endif %}
+        attributes:
+          slot: >
+            {% set h = now().hour %}
+            {% set is_weekend = now().weekday() >= 5 %}
+            {% if is_weekend %}weekend
+            {% elif h < 6 %}night (00-06h)
+            {% elif h < 10 %}morning (06-10h)
+            {% elif h < 17 %}day (10-17h)
+            {% elif h < 22 %}evening (17-22h)
+            {% else %}late night (22-24h){% endif %}
+
+      - name: "OPCOM Energyprices"
+        unique_id: f1a67a35-7b50-4d95-8ccb-e6642c950061
+        unit_of_measurement: RON
+        state: "{{ states('sensor.dynamic_current_hour_price') }}"
+        attributes:
+          times: >
+            {% set ns = namespace(times=[]) %}
+            {% set today = state_attr('sensor.dynamic_current_hour_price', 'raw_today') %}
+            {% if today %}
+              {% for hours in today %}
+                {% set ns.times = ns.times + [hours.start | as_datetime | as_local | string] %}
+              {% endfor %}
+            {% endif %}
+            {% set tomorrow = state_attr('sensor.dynamic_current_hour_price', 'raw_tomorrow') %}
+            {% if tomorrow %}
+              {% for hours in tomorrow %}
+                {% set ns.times = ns.times + [hours.start | as_datetime | as_local | string] %}
+              {% endfor %}
+            {% endif %}
+            {{ ns.times }}
+          prices: >
+            {% set ns = namespace(prices=[]) %}
+            {% set pzu_value = states('input_number.pzu') | float(0) %}
+            {% set today = state_attr('sensor.dynamic_current_hour_price', 'raw_today') %}
+            {% if today %}
+              {% for hours in today %}
+                {% if hours.value is not none %}
+                  {% set final_price = (hours.value + pzu_value) / 1000 %}
+                  {% set ns.prices = ns.prices + [final_price | round(6)] %}
+                {% endif %}
+              {% endfor %}
+            {% endif %}
+            {% set tomorrow = state_attr('sensor.dynamic_current_hour_price', 'raw_tomorrow') %}
+            {% if tomorrow %}
+              {% for hours in tomorrow %}
+                {% if hours.value is not none %}
+                  {% set final_price = (hours.value + pzu_value) / 1000 %}
+                  {% set ns.prices = ns.prices + [final_price | round(6)] %}
+                {% endif %}
+              {% endfor %}
+            {% endif %}
+            {{ ns.prices }}
+
+  - switch:
+      - name: "PDU A4"
+        unique_id: pdu_outlet_aa4
+        state: "{{ is_state('sensor.outlet_aa4_state', '1') }}"
+        turn_on:
+          - action: switch.turn_on
+            target:
+              entity_id: switch.pdu_outlet_aa4
+        turn_off:
+          - action: switch.turn_off
+            target:
+              entity_id: switch.pdu_outlet_aa4
+
+    
+# Victron Configuration.  // If you require stats from your victron system you must have a Venus device installed as part of your Victron installation. This does not use VRM.This users MODBUS
+
+modbus:
+  - name: victron
+    type: tcp
+    host: !secret victron_modbus_host
+    port: 502
+    sensors:
+      - name: Battery Power
+        unit_of_measurement: W
+        slave: 100
+        address: 842
+      - name: "Battery SOC"   # // Best battery state of charge, determined from different measurements. read from //com.victronenergy.system
+        unit_of_measurement: "%"
+        scale: 1
+        precision: 1
+        slave: 100
+        address: 843
+      - name: "Battery Voltage"  # // Battery Voltage determined from different measurements. In order of preference: BMV-voltage (V), Multi-DC-Voltage (CV), MPPT-DC-Voltage (ScV), Charger voltage //com.victronenergy.system
+        unit_of_measurement: "V"
+        scale: 0.1
+        precision: 1
+        slave: 100
+        address: 840
+
+      - name: "Battery Current" # // Postive: battery begin charged. Negative: battery being discharged read from //com.victronenergy.system
+        unit_of_measurement: "A"
+        scale: 0.1
+        precision: 1
+        slave: 100
+        address: 841
+
+      - name: "Battery Power" # // Postive: battery begin charged. Negative: battery being discharged read from //com.victronenergy.system
+        unit_of_measurement: "W"
+        scale: 1
+        precision: 1
+        slave: 100
+        address: 842
+
+      - name: "Battery State"
+        scale: 1
+        precision: 1
+        slave: 100
+        address: 844
+
+      - name: "Battery Consumed Amphours"
+        unit_of_measurement: "Ah"
+        scale: 10
+        precision: 1
+        slave: 100
+        address: 845
+# not suported by CAN-bms##################################################################################
+#      - name: "Battery Time to Go"  #\\ Special value: 0 = charging read from //com.victronenergy.system
+#        unit_of_measurement: "s"
+#        scale: 0.01
+#        precision: 1
+#        slave: 225
+#        address: 303 #846
+############################################################################################################
+
+      - name: "Enel Grid"  #\\ Power supplied by Grid to system. read from //com.victronenergy.system
+        unit_of_measurement: "W"
+        scale: 1
+        precision: 1
+        slave: 100
+        address: 820
+        
+      - name: "AC Loads"
+        unique_id: victron_ac_loads
+        unit_of_measurement: "W"
+        device_class: power          # ← POWER not energy
+        state_class: measurement
+        scale: 1
+        precision: 1
+        slave: 100
+        address: 817
+        
+
+      - name: "Active input source"  #\\ Power supplied by Grid to system. read from //com.victronenergy.system
+        unit_of_measurement: "W"  # \\ 0=Not available;1=Grid;2=Generator;3=Eskom power;240=Not connected
+        scale: 1
+        precision: 1
+        slave: 100
+        address: 826
+
+      - name: "Grid lost alarm" # \\ 0=Ok;2=Alarm
+        scale: 1
+        precision: 1
+        slave: 227 #add by Vlad
+        address: 64
+        
+      - name: "ESS State" # \\ 0=Unused, BL disabled;1=Restarting;2=Self-consumption;3=Self-consumption;4=Self-consumption;5=Discharge disabled;6=Force charge;7=Sustain;8=Low Soc Recharge;9=Keep batteries charged;10=BL Disabled;11=BL Disabled (Low SoC);12=BL Disabled (Low SOC recharge)
+        scale: 1
+        precision: 1
+        slave: 100
+        address: 2900
+
+      - name: "VE.Bus state" # \\ 0=Off;1=Low Power;2=Fault;3=Bulk;4=Absorption;5=Float;6=Storage;7=Equalize;8=Passthru;9=Inverting;10=Power assist;11=Power supply;252=Bulk protection
+        scale: 1
+        precision: 1
+        slave: 227 #add by Vlad
+        address: 31
+
+      - name: "Battery Temperature" #
+        unit_of_measurement: "°C"
+        scale: 0.1
+        precision: 1
+        slave: 225
+        address: 262
+      
+      - name: "Battery Discharged Energy"
+        unit_of_measurement: "kWh"
+        scale: 0.1
+        precision: 1
+        slave: 225
+        address: 301
+        
+      - name: "Battery Charged Energy"
+        unit_of_measurement: "kWh"
+        scale: 0.1
+        precision: 1
+        slave: 225
+        address: 302
+###############################################################
+#                                                             #
+#     Sensor Configurations - com.victronenergy.solarcharger  #
+#                                                             #
+###############################################################
+
+      - name: " Solar Charge state" # \\ 0=Off;2=Fault;3=Bulk;4=Absorption;5=Float;6=Storage;7=Equalize;11=Other (Hub-1);252=External control
+        scale: 1
+        precision: 1
+        slave: 226 #add by Vlad
+        address: 775
+
+      - name: " PV voltage" # \\ Not available if multiple VE.Can chargers are combined
+        unit_of_measurement: "V"
+        scale: 0.01
+        slave: 226
+        address: 776
+
+      - name: " PV Current" # \\ Not available if multiple VE.Can chargers are combined
+        unit_of_measurement: "A"
+        scale: 0.01
+        precision: 1
+        slave: 226
+        address: 777
+
+      - name: " PV Power Cotet" # \\ Not available if multiple VE.Can chargers are combined
+        unit_of_measurement: "W"
+        scale: 0.1
+        precision: 1
+        slave: 226  #add by Vlad
+        address: 789
+    
+      - name: "Productie Cotet"
+        unit_of_measurement: "kWh"
+        scale: 0.1
+        precision: 1
+        slave: 226
+        address: 790
+        
+      - name: "Productie Atelier"
+        unit_of_measurement: "kWh"
+        scale: 0.1
+        precision: 1
+        slave: 224
+        address: 790
+        
+      - name: " PV Power Atelier" # \\ Not available if multiple VE.Can chargers are combined
+        unit_of_measurement: "W"
+        scale: 0.1
+        precision: 1
+        slave: 224
+        address: 789
+        
+      - name: " Yield today" # \\ Today's yield
+        unit_of_measurement: "kWh"
+        scale: 0.1
+        precision: 1
+        slave: 224  #add by Vlad
+        address: 784
+
+      - name: " Maximum charge power today" # \\ Today's maximum power
+        unit_of_measurement: "kWh"
+        scale: 1
+        precision: 1
+        slave: 226  #add by Vlad
+        address: 785
+
+      - name: " Yield Yesterday" # \\ Yesterdays's yield
+        unit_of_measurement: "kWh"
+        scale: 0.1
+        precision: 1
+        slave: 226
+        address: 786
+
+      - name: " Maximum charge power yesterday" # \\ Yesterdays's maximum power
+        unit_of_measurement: "kWh"
+        scale: 1
+        precision: 1
+        slave: 226      #add by Vlad
+        address: 787    #add by Vlad
+
+###############################################################
+#                                                             #
+#     Sensor Configurations - com.victronenergy.tank          #
+#                                                             #
+###############################################################
+#      - name: "Tank Capacity" # \\ Tank Informaiton Capacity
+#        scale: 10000
+#        precision: 1
+#        slave: 22
+#        address: 3001
+#
+#      - name: "Tank Levels" # \\ Tank Informaiton Levels
+#        scale: 10000
+#        precision: 1
+#        slave: 22
+#        address: 3004
+###############################################################

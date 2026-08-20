@@ -1,8 +1,9 @@
 # Home Assistant
 secrets.yaml
 *.log
-.__pycache__/
+__pycache__/
 *.pyc
+.pytest_cache/
 
 # ML models (generated, not source)
 config/ml_models/

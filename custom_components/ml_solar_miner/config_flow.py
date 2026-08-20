@@ -1,5 +1,4 @@
 """Config flow for ML Solar Miner."""
-import logging
 from typing import Any
 
 import voluptuous as vol
@@ -21,9 +20,9 @@ from .const import (
     DEFAULT_RETRAIN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    SENSOR_STATE_KEYS,
+    get_entry_value,
 )
-
-_LOGGER = logging.getLogger(__name__)
 
 
 def _entity_selector(domain: str) -> selector.EntitySelector:
@@ -33,7 +32,6 @@ def _entity_selector(domain: str) -> selector.EntitySelector:
     )
 
 
-# Step 1 schema
 STEP_1_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_MINER_SWITCH): _entity_selector("switch"),
@@ -41,29 +39,10 @@ STEP_1_SCHEMA = vol.Schema(
     }
 )
 
-# Step 2 schema — sensor entity mapping
 STEP_2_SCHEMA = vol.Schema(
-    {
-        vol.Optional("solar_power_total"): _entity_selector("sensor"),
-        vol.Optional("solar_surplus_power"): _entity_selector("sensor"),
-        vol.Optional("battery_soc"): _entity_selector("sensor"),
-        vol.Optional("battery_voltage"): _entity_selector("sensor"),
-        vol.Optional("battery_current"): _entity_selector("sensor"),
-        vol.Optional("battery_power"): _entity_selector("sensor"),
-        vol.Optional("battery_kwh_available"): _entity_selector("sensor"),
-        vol.Optional("battery_drain_rate"): _entity_selector("sensor"),
-        vol.Optional("battery_hours_to_min"): _entity_selector("sensor"),
-        vol.Optional("hours_until_sunrise"): _entity_selector("sensor"),
-        vol.Optional("total_load_power"): _entity_selector("sensor"),
-        vol.Optional("miner_consumption"): _entity_selector("sensor"),
-        vol.Optional("forecast_tomorrow"): _entity_selector("sensor"),
-        vol.Optional("forecast_day3"): _entity_selector("sensor"),
-        vol.Optional("grid_power"): _entity_selector("sensor"),
-        vol.Optional("mining_viability_score"): _entity_selector("sensor"),
-    }
+    {vol.Optional(key): _entity_selector("sensor") for key in SENSOR_STATE_KEYS}
 )
 
-# Step 3 schema — options
 STEP_3_SCHEMA = vol.Schema(
     {
         vol.Optional(
@@ -83,6 +62,20 @@ STEP_3_SCHEMA = vol.Schema(
 )
 
 
+def _split_options(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Convert minutes/hours form values into data + options dicts."""
+    scan_seconds = user_input.pop(CONF_SCAN_INTERVAL_OPTION) * 60
+    retrain_seconds = user_input.pop(CONF_RETRAIN_INTERVAL) * 3600
+    options = {
+        CONF_SCAN_INTERVAL_OPTION: scan_seconds,
+        CONF_RETRAIN_INTERVAL: retrain_seconds,
+        CONF_AUTO_CONTROL: user_input.pop(CONF_AUTO_CONTROL),
+        CONF_BATTERY_CAPACITY_KWH: user_input.pop(CONF_BATTERY_CAPACITY_KWH),
+        CONF_MIN_SAMPLES_FOR_MODEL: user_input.pop(CONF_MIN_SAMPLES_FOR_MODEL),
+    }
+    return user_input, options
+
+
 class MLSolarMinerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for ML Solar Miner."""
 
@@ -96,10 +89,12 @@ class MLSolarMinerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
         """Handle the initial step — miner control entities."""
+        await self.async_set_unique_id(DOMAIN)
+        self._abort_if_unique_id_configured()
+
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            # Validate entities exist
             if not self.hass.states.get(user_input[CONF_MINER_SWITCH]):
                 errors[CONF_MINER_SWITCH] = "entity_not_found"
             elif not self.hass.states.get(user_input[CONF_MINER_POWER_NUMBER]):
@@ -112,9 +107,7 @@ class MLSolarMinerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=STEP_1_SCHEMA,
             errors=errors,
-            description_placeholders={
-                "name": "ML Solar Miner",
-            },
+            description_placeholders={"name": "ML Solar Miner"},
         )
 
     async def async_step_sensors(
@@ -135,19 +128,11 @@ class MLSolarMinerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> config_entries.ConfigFlowResult:
         """Handle the options step."""
         if user_input is not None:
-            # Convert minutes/hours to seconds
-            scan_seconds = user_input.pop(CONF_SCAN_INTERVAL_OPTION) * 60
-            retrain_hours = user_input.pop(CONF_RETRAIN_INTERVAL) * 3600
-
-            self.data[CONF_SCAN_INTERVAL_OPTION] = scan_seconds
-            self.data[CONF_RETRAIN_INTERVAL] = retrain_hours
-            self.data.update(user_input)
-
-            # Set unique ID and create entry
-            await self.async_set_unique_id("ml_solar_miner")
-            self._abort_if_unique_id_configured()
-
-            return self.async_create_entry(title="ML Solar Miner", data=self.data)
+            data, options = _split_options(user_input)
+            self.data.update(data)
+            return self.async_create_entry(
+                title="ML Solar Miner", data=self.data, options=options
+            )
 
         return self.async_show_form(
             step_id="options",
@@ -160,46 +145,40 @@ class MLSolarMinerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         config_entry: config_entries.ConfigEntry,
     ) -> "MLSolarMinerOptionsFlow":
         """Get the options flow for this handler."""
-        return MLSolarMinerOptionsFlow(config_entry)
+        return MLSolarMinerOptionsFlow()
 
 
 class MLSolarMinerOptionsFlow(config_entries.OptionsFlow):
     """Handle options flow for ML Solar Miner."""
-
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        """Initialize options flow."""
-        self.config_entry = config_entry
-        self.options = dict(config_entry.data)
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
         """Manage the options."""
         if user_input is not None:
-            scan_seconds = user_input.pop(CONF_SCAN_INTERVAL_OPTION) * 60
-            retrain_hours = user_input.pop(CONF_RETRAIN_INTERVAL) * 3600
+            _, options = _split_options(user_input)
+            return self.async_create_entry(title="", data=options)
 
-            self.options[CONF_SCAN_INTERVAL_OPTION] = scan_seconds
-            self.options[CONF_RETRAIN_INTERVAL] = retrain_hours
-            self.options.update(user_input)
-
-            return self.async_create_entry(title="", data=self.options)
-
-        # Pre-fill current values
         current = {
-            CONF_SCAN_INTERVAL_OPTION: self.options.get(
-                CONF_SCAN_INTERVAL_OPTION, DEFAULT_SCAN_INTERVAL
+            CONF_SCAN_INTERVAL_OPTION: get_entry_value(
+                self.config_entry, CONF_SCAN_INTERVAL_OPTION, DEFAULT_SCAN_INTERVAL
             )
             // 60,
-            CONF_AUTO_CONTROL: self.options.get(CONF_AUTO_CONTROL, True),
-            CONF_BATTERY_CAPACITY_KWH: self.options.get(
-                CONF_BATTERY_CAPACITY_KWH, DEFAULT_BATTERY_CAPACITY_KWH
+            CONF_AUTO_CONTROL: get_entry_value(
+                self.config_entry, CONF_AUTO_CONTROL, True
             ),
-            CONF_MIN_SAMPLES_FOR_MODEL: self.options.get(
-                CONF_MIN_SAMPLES_FOR_MODEL, DEFAULT_MIN_SAMPLES_FOR_MODEL
+            CONF_BATTERY_CAPACITY_KWH: get_entry_value(
+                self.config_entry,
+                CONF_BATTERY_CAPACITY_KWH,
+                DEFAULT_BATTERY_CAPACITY_KWH,
             ),
-            CONF_RETRAIN_INTERVAL: self.options.get(
-                CONF_RETRAIN_INTERVAL, DEFAULT_RETRAIN_INTERVAL
+            CONF_MIN_SAMPLES_FOR_MODEL: get_entry_value(
+                self.config_entry,
+                CONF_MIN_SAMPLES_FOR_MODEL,
+                DEFAULT_MIN_SAMPLES_FOR_MODEL,
+            ),
+            CONF_RETRAIN_INTERVAL: get_entry_value(
+                self.config_entry, CONF_RETRAIN_INTERVAL, DEFAULT_RETRAIN_INTERVAL
             )
             // 3600,
         }

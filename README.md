@@ -22,7 +22,7 @@ ML-powered Bitcoin miner power management for Home Assistant. Uses machine learn
 
 - **DAY (solar)**: Matches miner power to real-time solar surplus (3500-6000W)
 - **NIGHT (drain)**: Calculates optimal drain rate to reach target SoC by sunrise based on next-day forecast
-- **SAFETY**: Hard limits — SoC < 12% = miner OFF, grid import > 300W = reduce power
+- **SAFETY**: Hard limits — SoC < 12% = miner OFF (`safety_shutdown`), grid import > 300W = reduce power (or off if below 3500W). Positive `grid_power` is treated as import.
 
 ### Auto-Retraining Triggers
 
@@ -56,7 +56,7 @@ DataUpdateCoordinator
         ├── Build feature vector (features_from_state)
         ├── Load model from cache or disk (executor thread)
         │
-        ├── If model exists + ≥50 samples:
+        ├── If model exists + sample count ≥ min_samples (default 50):
         │   └── GradientBoostingRegressor.predict()
         └── Else:
             └── Rule-based teacher (day_solar / night_drain)
@@ -311,6 +311,9 @@ custom_components/ml_solar_miner/
 │   └── en.json          # English translations
 └── brand/
     └── icon.png         # Integration icon
+
+tests/
+└── test_models.py       # Unit tests for teacher, safety, reward, retrain
 ```
 
 ---

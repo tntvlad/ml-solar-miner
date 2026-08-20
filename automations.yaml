@@ -1,0 +1,1180 @@
+- id: '1672057736343'
+  alias: Pornire S1
+  description: ''
+  trigger:
+  - platform: numeric_state
+    entity_id:
+    - sensor.battery_current
+    for:
+      hours: 0
+      minutes: 5
+      seconds: 0
+    above: 45
+  condition:
+  - condition: and
+    conditions:
+    - condition: device
+      type: is_off
+      device_id: 4dd61422967a055334857609ad28d031
+      entity_id: 4d96858504bc898ec2475cec31d1ec4d
+      domain: switch
+      for:
+        hours: 0
+        minutes: 0
+        seconds: 10
+    - condition: numeric_state
+      entity_id: sensor.battery_current
+      above: 45
+  action:
+  - type: turn_on
+    device_id: DEVICE_ID_MINER_S1
+    entity_id: ENTITY_ID_MINER_S1
+    domain: switch
+  - service: notify.mobile_app_YOUR_PHONE
+    data:
+      message: Pornire S1
+  mode: single
+- id: '1672729801577'
+  alias: Pornire miner S1
+  description: ''
+  trigger:
+  - platform: numeric_state
+    entity_id: sensor.battery_power
+    for:
+      hours: 0
+      minutes: 10
+      seconds: 0
+    above: 1399.9
+  condition:
+  - condition: device
+    type: is_off
+    device_id: DEVICE_ID_MINER_S1
+    entity_id: ENTITY_ID_MINER_S1
+    domain: switch
+  - condition: and
+    conditions:
+    - condition: device
+      type: is_off
+      device_id: 4dd61422967a055334857609ad28d031
+      entity_id: 4d96858504bc898ec2475cec31d1ec4d
+      domain: switch
+  action:
+  - type: turn_on
+    device_id: DEVICE_ID_MINER_S1
+    entity_id: ENTITY_ID_MINER_S1
+    domain: switch
+  - service: notify.mobile_app_YOUR_PHONE
+    data:
+      message: Pornire miner S1
+  mode: single
+- id: '1708070120649'
+  alias: Pornire S2
+  description: ''
+  trigger:
+  - platform: numeric_state
+    entity_id:
+    - sensor.battery_current
+    for:
+      hours: 0
+      minutes: 5
+      seconds: 0
+    above: 45
+  condition:
+  - condition: and
+    conditions:
+    - condition: device
+      type: is_on
+      device_id: 4dd61422967a055334857609ad28d031
+      entity_id: 4d96858504bc898ec2475cec31d1ec4d
+      domain: switch
+    - condition: numeric_state
+      entity_id: sensor.battery_current
+      above: 45
+    - condition: device
+      type: is_off
+      device_id: 60f7e64a890c685bdda54ef8e12837ed
+      entity_id: 3df721a093229d699c2067dcc0a39cfe
+      domain: switch
+  action:
+  - type: turn_on
+    device_id: DEVICE_ID_MINER_S2
+    entity_id: ENTITY_ID_MINER_S2
+    domain: switch
+  - service: notify.mobile_app_YOUR_PHONE
+    data:
+      message: Pornire S2
+  mode: single
+- id: '1722677678086'
+  alias: Pornire S4
+  description: ''
+  triggers:
+  - entity_id:
+    - sensor.battery_current
+    for:
+      hours: 0
+      minutes: 5
+      seconds: 0
+    above: 45
+    trigger: numeric_state
+  conditions:
+  - condition: and
+    conditions:
+    - condition: device
+      type: is_on
+      device_id: 735c14f4a01af38587a2eb9a30d34232
+      entity_id: 22d94407eb58c9d02833df4230388f71
+      domain: switch
+    - condition: numeric_state
+      entity_id: sensor.battery_current
+      above: 60
+    - condition: device
+      type: is_off
+      device_id: c8898208cb9571798fa33ce7118e2b5f
+      entity_id: da64089cc34d17e3a78a268b92495112
+      domain: switch
+  actions:
+  - type: turn_on
+    device_id: DEVICE_ID_MINER_S4
+    entity_id: ENTITY_ID_MINER_S4
+    domain: switch
+  - data:
+      message: Pornire S3
+    action: notify.mobile_app_YOUR_PHONE
+  mode: single
+- id: '1722677696333'
+  alias: Pornire S5
+  description: ''
+  trigger:
+  - platform: numeric_state
+    entity_id:
+    - sensor.battery_current
+    for:
+      hours: 0
+      minutes: 5
+      seconds: 0
+    above: 45
+  condition:
+  - condition: and
+    conditions:
+    - condition: device
+      type: is_on
+      device_id: 60f7e64a890c685bdda54ef8e12837ed
+      entity_id: 3df721a093229d699c2067dcc0a39cfe
+      domain: switch
+    - condition: numeric_state
+      entity_id: sensor.battery_current
+      above: 45
+    - condition: device
+      type: is_off
+      device_id: 735c14f4a01af38587a2eb9a30d34232
+      entity_id: 22d94407eb58c9d02833df4230388f71
+      domain: switch
+  action:
+  - type: turn_on
+    device_id: DEVICE_ID_MINER_S3
+    entity_id: ENTITY_ID_MINER_S3
+    domain: switch
+  - service: notify.mobile_app_YOUR_PHONE
+    data:
+      message: Pornire S3
+  mode: single
+- id: '1722677742856'
+  alias: Pornire S6
+  description: ''
+  trigger:
+  - platform: numeric_state
+    entity_id:
+    - sensor.battery_current
+    for:
+      hours: 0
+      minutes: 5
+      seconds: 0
+    above: 45
+  condition:
+  - condition: and
+    conditions:
+    - condition: device
+      type: is_on
+      device_id: 60f7e64a890c685bdda54ef8e12837ed
+      entity_id: 3df721a093229d699c2067dcc0a39cfe
+      domain: switch
+    - condition: numeric_state
+      entity_id: sensor.battery_current
+      above: 45
+    - condition: device
+      type: is_off
+      device_id: 735c14f4a01af38587a2eb9a30d34232
+      entity_id: 22d94407eb58c9d02833df4230388f71
+      domain: switch
+  action:
+  - type: turn_on
+    device_id: DEVICE_ID_MINER_S3
+    entity_id: ENTITY_ID_MINER_S3
+    domain: switch
+  - service: notify.mobile_app_YOUR_PHONE
+    data:
+      message: Pornire S3
+  mode: single
+- id: '1738612070446'
+  alias: Pornire racire
+  description: ''
+  triggers:
+  - type: temperature
+    device_id: DEVICE_ID_TEMP_SENSOR
+    entity_id: ENTITY_ID_TEMP_SENSOR
+    domain: sensor
+    trigger: device
+    above: 63
+    for:
+      hours: 0
+      minutes: 0
+      seconds: 1
+  conditions: []
+  actions:
+  - type: turn_on
+    device_id: DEVICE_ID_COOLING
+    entity_id: ENTITY_ID_COOLING
+    domain: switch
+  mode: single
+- id: '1738612161375'
+  alias: Oprire racire
+  description: ''
+  triggers:
+  - type: temperature
+    device_id: DEVICE_ID_TEMP_SENSOR
+    entity_id: ENTITY_ID_TEMP_SENSOR
+    domain: sensor
+    trigger: device
+    for:
+      hours: 0
+      minutes: 0
+      seconds: 1
+    below: 62
+  conditions: []
+  actions:
+  - type: turn_off
+    device_id: DEVICE_ID_COOLING
+    entity_id: ENTITY_ID_COOLING
+    domain: switch
+  mode: single
+- id: 9b9a50ef0d7a4fec96bbbcd869ceb69e
+  alias: Protecție Baterii - Revenire BL_DISABLED
+  description: Revine la BL_DISABLED când celula depășește 3.2V
+  triggers:
+  - entity_id: sensor.infinisolar_v_x_3_battery_10_cell_voltage_lowest
+    above: 3.2
+    for:
+      minutes: 15
+    trigger: numeric_state
+  conditions:
+  - condition: state
+    entity_id: select.victron_settings_ess_batterylife_state
+    state: KEEP_BATTERIES_CHARGED
+  actions:
+  - target:
+      entity_id: select.victron_settings_ess_batterylife_state
+    data:
+      option: BL_DISABLED
+    action: select.select_option
+  - data:
+      title: ✅ Baterii Recuperate
+      message: 'Celula s-a recuperat la {{ states(''sensor.infinisolar_v_x_3_battery_10_cell_voltage_lowest'')
+        }}V.
+
+        Battery Life revenit la BL_DISABLED (funcționare normală).
+
+        '
+    action: notify.notify
+    enabled: false
+  - data:
+      title: ✅ Protecție Baterii Dezactivată
+      message: "\U0001F50B Tensiune celulă: {{ states('sensor.infinisolar_v_x_3_battery_10_cell_voltage_lowest')
+        }}V\n⚡ Mod: BL_DISABLED (funcționare normală)\n\U0001F550 Data: {{ now().strftime('%Y-%m-%d
+        %H:%M:%S') }}\n✅ Sistemul a revenit la funcționare normală cu solar/baterii.\n"
+    action: persistent_notification.create
+  mode: single
+- id: '1745234961381'
+  alias: Oil Temperature Control - Basic
+  description: Control cooling system based on oil temperature
+  triggers:
+  - entity_id:
+    - sensor.tasmota_ds18b20_temperature
+    above: 55
+    for:
+      minutes: 2
+    trigger: numeric_state
+  - entity_id:
+    - sensor.tasmota_ds18b20_temperature
+    below: 50
+    for:
+      minutes: 2
+    trigger: numeric_state
+  conditions: []
+  actions:
+  - choose:
+    - conditions:
+      - condition: numeric_state
+        entity_id: sensor.tasmota_ds18b20_temperature
+        above: 55
+      sequence:
+      - type: turn_on
+        device_id: df6034843c7332487d6bba2d34865334
+        entity_id: 0357f86f4e98c0959785544f8e342e35
+        domain: switch
+    - conditions:
+      - condition: numeric_state
+        entity_id: sensor.tasmota_ds18b20_temperature
+        below: 50
+      sequence:
+      - type: turn_off
+        device_id: df6034843c7332487d6bba2d34865334
+        entity_id: 0357f86f4e98c0959785544f8e342e35
+        domain: switch
+  mode: single
+- id: '1745479218795'
+  alias: Reset Cooling Corrections Counter
+  description: ''
+  triggers:
+  - hours: /6
+    minutes: 0
+    seconds: 0
+    trigger: time_pattern
+  actions:
+  - target:
+      entity_id: counter.cooling_corrections
+    action: counter.reset
+- id: '1745610181396'
+  alias: Start Pulse Cooling Script at Startup
+  description: ''
+  triggers:
+  - event: start
+    trigger: homeassistant
+  actions:
+  - target:
+      entity_id: script.pulse_cooling_proportional_to_pid_output
+    action: script.turn_on
+  mode: single
+- id: '1746281324215'
+  alias: Battery Voltage Control
+  description: Turn Tasmota switch off when battery voltage is low and on when voltage
+    recovers
+  triggers:
+  - entity_id: sensor.solar2mqtt_battery_voltage
+    below: 44.3
+    id: low_voltage
+    trigger: numeric_state
+  - entity_id: sensor.solar2mqtt_battery_voltage
+    above: 48.3
+    id: high_voltage
+    trigger: numeric_state
+  conditions: []
+  actions:
+  - choose:
+    - conditions:
+      - condition: trigger
+        id: low_voltage
+      sequence:
+      - target:
+          entity_id: switch.tasmota
+        data: {}
+        action: switch.turn_off
+      - data:
+          message: Battery voltage low ({{ states('sensor.solar2mqtt_battery_voltage')
+            }}V) - Tasmota switch turned OFF
+        action: notify.notify
+    - conditions:
+      - condition: trigger
+        id: high_voltage
+      sequence:
+      - target:
+          entity_id: switch.tasmota
+        data: {}
+        action: switch.turn_on
+      - data:
+          message: Battery voltage recovered ({{ states('sensor.solar2mqtt_battery_voltage')
+            }}V) - Tasmota switch turned ON
+        action: notify.notify
+  mode: single
+- id: '1746281386558'
+  alias: Protecție Baterii - Activare KEEP_BATTERIES_CHARGED
+  description: Setează KEEP_BATTERIES_CHARGED când celula scade sub 2.7V
+  triggers:
+  - entity_id:
+    - sensor.infinisolar_v_x_3_battery_10_cell_voltage_lowest
+    below: 2.8
+    trigger: numeric_state
+  conditions:
+  - condition: not
+    conditions:
+    - condition: state
+      entity_id: select.victron_settings_ess_batterylife_state
+      state: KEEP_BATTERIES_CHARGED
+  actions:
+  - target:
+      entity_id: select.victron_settings_ess_batterylife_state
+    data:
+      option: KEEP_BATTERIES_CHARGED
+    action: select.select_option
+  - data:
+      title: "\U0001F6A8 ALERTĂ BATERII CRITICĂ"
+      message: 'Celula a scăzut la {{ states(''sensor.infinisolar_v_x_3_battery_10_cell_voltage_lowest'')
+        }}V! Battery Life setat pe KEEP_BATTERIES_CHARGED. Baterii se vor încărca
+        din Grid.
+
+        '
+    action: notify.notify
+    enabled: false
+  - data:
+      title: ⚠️ Protecție Baterii Activată
+      message: 'Tensiune celulă: {{ states(''sensor.infinisolar_v_x_3_battery_10_cell_voltage_lowest'')
+        }}V
+
+        Mod: KEEP_BATTERIES_CHARGED (încărcare forțată din Grid)
+
+        Data: {{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}
+
+        '
+    action: persistent_notification.create
+  mode: single
+- id: '1747077441418'
+  alias: Notify if Pump Power Drops Below 72W
+  description: Notify if recirculation pump power drops below 72W for over 2 minutes
+  triggers:
+  - entity_id: sensor.shellypro2pm_YOUR_MAC_switch_1_power
+    below: 72
+    for:
+      minutes: 2
+    trigger: numeric_state
+  actions:
+  - data:
+      message: '⚠️ Warning: Recirculation pump power dropped below 72W! Current value:
+        {{ states(''sensor.shellypro2pm_YOUR_MAC_switch_1_power'') }} W. Possible
+        air or malfunction detected.'
+    action: notify.notify
+  mode: single
+- id: mining_decision_engine_ml
+  alias: "⛏️ Mining Decision Engine (ML)"
+  description: Runs ML decision script, parses JSON response, and applies miner settings
+  triggers:
+  - trigger: time_pattern
+    minutes: /20
+  conditions:
+  - condition: template
+    value_template: '{{ states(''sensor.mining_decision_context'') == ''ready'' }}'
+  - condition: template
+    value_template: "{{ states('sensor.infinisolar_v_multiphase_x_3_battery_state_of_charge')\n
+      \  not in ['unknown', 'unavailable'] }}\n"
+  actions:
+  - alias: Run ML decision script
+    action: shell_command.run_mining_ml_decision
+    response_variable: ml_response
+  - alias: Extract stdout from response
+    variables:
+      ml_stdout: '{{ ml_response.stdout | default(ml_response | string) }}'
+  - alias: Parse ML JSON response
+    variables:
+      raw_response: '{{ ml_stdout }}'
+      parsed: '{{ ml_stdout | string | trim | from_json }}'
+  - alias: Calculate safe final values
+    variables:
+      soc: '{{ states(''sensor.infinisolar_v_multiphase_x_3_battery_state_of_charge'')
+        | float(0) }}'
+      safe_miner: '{% if soc < 10 %}off{% else %}{{ parsed.miner_active | default(''off'')
+        }}{% endif %}'
+      safe_power: '{% set raw = parsed.miner_power | int(3500) %}
+
+        {% set clamped = [[raw, 3500] | max, 6000] | min %}
+
+        {{ ((clamped / 100) | round(0) * 100) | int }}
+
+        '
+  - alias: Set miner switch
+    action: switch.turn_{{ safe_miner }}
+    target:
+      entity_id: switch.antminer_active_2
+  - alias: Set miner power level
+    if:
+    - condition: template
+      value_template: '{{ safe_miner == ''on'' }}'
+    then:
+    - action: number.set_value
+      target:
+        entity_id: number.antminer_power_limit_2
+      data:
+        value: '{{ safe_power }}'
+  - alias: Log mining decision
+    action: logbook.log
+    data:
+      name: Mining ML
+      message: 'MODE: {{ parsed.mode | default(''unknown'') | upper }} | Miner: {{
+        safe_miner | upper }} @ {{ safe_power }}W | SoC: {{ states(''sensor.infinisolar_v_multiphase_x_3_battery_state_of_charge'')
+        }}% | Solar: {{ states(''sensor.solar_power_total'') }}W | Surplus: {{ states(''sensor.solar_surplus_power'')
+        }}W | Source: {{ parsed.source | default(''unknown'') }} | REASON: {{ parsed.reason | default(''no reason given'')
+        }}'
+  - alias: Update training samples sensor
+    action: input_number.set_value
+    target:
+      entity_id: input_number.ml_training_samples_count
+    data:
+      value: '{{ parsed.training_samples | int(0) }}'
+  - alias: Notify if ML fallback triggered
+    if:
+    - condition: template
+      value_template: '{{ parsed.mode | default('''') == ''fallback_safe'' }}'
+    then:
+    - action: persistent_notification.create
+      data:
+        title: "\u26a0\ufe0f Mining ML \u2014 Fallback Activated"
+        message: 'ML script returned invalid or empty JSON at {{ now().strftime(''%H:%M'')
+          }}. Safe defaults applied: Miner OFF @ 3500W. Raw response (first
+          300 chars): {{ raw_response[:300] }}'
+        notification_id: mining_ml_fallback
+  mode: restart
+  max_exceeded: silent
+- id: mining_safety_watchdog
+  alias: "\U0001F6E1️ Mining Safety Watchdog"
+  description: Hard battery protection — runs independently of AI decisions
+  triggers:
+  - minutes: /2
+    trigger: time_pattern
+  - entity_id: sensor.infinisolar_v_multiphase_x_3_battery_state_of_charge
+    trigger: state
+  actions:
+  - variables:
+      soc: '{{ states(''sensor.infinisolar_v_multiphase_x_3_battery_state_of_charge'')
+        | float(0) }}'
+      grid_power: '{{ states(''sensor.victron_vebus_activein_l1_power_227'') | float(0)
+        }}'
+      current_adj_power: '{{ states(''number.antminer_power_limit_2'') | float(3500)
+        }}'
+  - if:
+    - condition: template
+      value_template: '{{ soc < 10 }}'
+    then:
+    - action: switch.turn_off
+      target:
+        entity_id: switch.antminer_active_2
+    - action: logbook.log
+      data:
+        name: "\U0001F6E1️ Safety Watchdog"
+        message: "\U0001F534 CRITICAL: SoC {{ soc }}% below 10% — Miner OFF\n"
+  - if:
+    - condition: template
+      value_template: '{{ grid_power > 300 and is_state(''switch.antminer_active_2'',
+        ''on'') }}'
+    then:
+    - action: number.set_value
+      target:
+        entity_id: number.antminer_power_limit_2
+      data:
+        value: '{{ [current_adj_power - 500, 3500] | max }}'
+    - action: logbook.log
+      data:
+        name: "\U0001F6E1️ Safety Watchdog"
+        message: "\U0001F7E0 GRID IMPORT: {{ grid_power }}W detected — Reduced miner
+          from {{ current_adj_power }}W to {{ [current_adj_power - 500, 3500] | max
+          }}W\n"
+  mode: single
+  max_exceeded: silent
+- id: mining_morning_reset
+  alias: "\U0001F305 Mining Morning Reset"
+  description: At sunrise, if SoC is safe, let AI take over miner control
+  mode: single
+  triggers:
+  - trigger: sun
+    event: sunrise
+    offset: +00:15:00
+  conditions:
+  - condition: template
+    value_template: '{{ states(''sensor.infinisolar_v_multiphase_x_3_battery_state_of_charge'')
+      | float(0) > 15 }}'
+  actions:
+  - action: logbook.log
+    data:
+      name: "\U0001F305 Morning Reset"
+      message: 'Sunrise reset — SoC: {{ states(''sensor.infinisolar_v_multiphase_x_3_battery_state_of_charge'')
+        }}% Solar: {{ states(''sensor.solar_power_total'') }}W. AI will take over
+        on next cycle.'
+- id: boiler_solar_control
+  alias: "\U0001F6BF Boiler Solar Control"
+  description: 'Controls AA7 boiler (future AA8, AA9) using solar surplus. 3 modes
+    based on today forecast: energy_saving below 80kWh (ON<45/OFF>55), normal 80-120kWh
+    (ON<55/OFF>65), high above 120kWh (ON<65/OFF>75). Each element 2.2kW.'
+  triggers:
+  - trigger: state
+    entity_id: sensor.tasmota_ds18b20_temperature
+    for:
+      seconds: 30
+  - trigger: time_pattern
+    minutes: /5
+  conditions: []
+  actions:
+  - variables:
+      forecast: '{{ states(''sensor.solcast_pv_forecast_atelier_forecast_today'')
+        | float(0) }}'
+      temp: '{{ states(''sensor.tasmota_ds18b20_temperature'') | float(0) }}'
+      surplus: '{{ states(''sensor.solar_surplus_power'') | float(0) }}'
+      soc: '{{ states(''sensor.infinisolar_v_multiphase_x_3_battery_state_of_charge'')
+        | float(0) }}'
+      heating_mode: '{% if forecast >= 120 %}high{% elif forecast >= 80 %}normal{%
+        else %}energy_saving{% endif %}'
+      temp_on: '{% if heating_mode == ''high'' %}65{% elif heating_mode == ''normal''
+        %}55{% else %}45{% endif %}'
+      temp_off: '{% if heating_mode == ''high'' %}75{% elif heating_mode == ''normal''
+        %}65{% else %}55{% endif %}'
+      solar_ok: '{{ surplus > 2200 or soc > 90 }}'
+  - choose:
+    - conditions:
+      - condition: template
+        value_template: '{{ temp > 80 }}'
+      sequence:
+      - action: switch.turn_off
+        target:
+          entity_id: switch.pdu_outlet_aa7
+      - action: logbook.log
+        data:
+          name: "\U0001F6BF Boiler"
+          message: "\U0001F534 OVERHEAT: {{ temp }}°C — AA7 OFF"
+    - conditions:
+      - condition: template
+        value_template: '{{ temp < temp_on and solar_ok }}'
+      sequence:
+      - action: switch.turn_on
+        target:
+          entity_id: switch.pdu_outlet_aa7
+      - action: logbook.log
+        data:
+          name: "\U0001F6BF Boiler"
+          message: HEAT ON | {{ heating_mode }} | {{ temp }}°C \u2192 target {{ temp_off
+            }}°C | forecast {{ forecast | round(0) }}kWh | surplus {{ surplus | round(0)
+            }}W
+    - conditions:
+      - condition: template
+        value_template: '{{ temp >= temp_off or (not solar_ok and is_state(''switch.pdu_outlet_aa7'',
+          ''on'')) }}'
+      sequence:
+      - action: switch.turn_off
+        target:
+          entity_id: switch.pdu_outlet_aa7
+      - action: logbook.log
+        data:
+          name: "\U0001F6BF Boiler"
+          message: HEAT OFF | {{ heating_mode }} | {{ temp }}°C | forecast {{ forecast
+            | round(0) }}kWh | surplus {{ surplus | round(0) }}W
+  mode: single
+  max_exceeded: silent
+- id: boiler_weekly_sanitation
+  alias: "\U0001F9AB Boiler Weekly Sanitation"
+  description: Heats boiler to 75°C every Sunday to kill Legionella. Only runs if
+    tomorrow solar forecast >= 120kWh.
+  triggers:
+  - trigger: time
+    at: '10:00:00'
+  conditions:
+  - condition: time
+    weekday:
+    - sun
+  - condition: template
+    value_template: '{{ states(''sensor.solcast_pv_forecast_atelier_forecast_today'')
+      | float(0) >= 120 }}'
+  actions:
+  - action: switch.turn_on
+    target:
+      entity_id: switch.pdu_outlet_aa7
+  - wait_template: '{{ states(''sensor.tasmota_ds18b20_temperature'') | float(0) >=
+      75 }}'
+    timeout:
+      hours: 6
+    continue_on_timeout: true
+  - action: switch.turn_off
+    target:
+      entity_id: switch.pdu_outlet_aa7
+  - action: logbook.log
+    data:
+      name: "\U0001F9AB Boiler Sanitation"
+      message: 'Sanitation {{ ''complete'' if wait.completed else ''TIMEOUT (6h max)''
+        }}. Final temp: {{ states(''sensor.tasmota_ds18b20_temperature'') }}°C'
+  - action: persistent_notification.create
+    data:
+      title: "\U0001F9AB Boiler Sanitation"
+      message: 'Sanitation {{ ''complete \u2705'' if wait.completed else ''TIMEOUT
+        \u26a0\ufe0f'' }}. Final temp: {{ states(''sensor.tasmota_ds18b20_temperature'')
+        }}°C'
+  mode: single
+- id: miner_heat_recovery_boiler
+  alias: "\U0001F525 Miner Heat Recovery → Boiler"
+  description: Pumps miner waste heat to boiler when miner outlet is hotter than boiler
+    and miner is running
+  triggers:
+  - trigger: state
+    entity_id: sensor.antminer_board_0_water_outlet_temperature
+    for:
+      seconds: 10
+  - trigger: state
+    entity_id: sensor.tasmota_ds18b20_temperature
+    for:
+      seconds: 10
+  - trigger: state
+    entity_id: switch.antminer_active_2
+  conditions: []
+  actions:
+  - variables:
+      outlet_temp: '{{ states(''sensor.antminer_board_0_water_outlet_temperature'')
+        | float(0) }}'
+      boiler_temp: '{{ states(''sensor.tasmota_ds18b20_temperature'') | float(0) }}'
+      miner_on: '{{ is_state(''switch.antminer_active_2'', ''on'') }}'
+  - choose:
+    - conditions:
+      - condition: template
+        value_template: '{{ outlet_temp > boiler_temp and miner_on }}'
+      sequence:
+      - action: switch.turn_on
+        target:
+          entity_id: switch.dhw_oil
+      - action: logbook.log
+        data:
+          name: "\U0001F525 Heat Recovery"
+          message: Pump ON | Miner outlet {{ outlet_temp }}°C > Boiler {{ boiler_temp
+            }}°C
+    - conditions:
+      - condition: template
+        value_template: '{{ outlet_temp <= boiler_temp or not miner_on }}'
+      sequence:
+      - action: switch.turn_off
+        target:
+          entity_id: switch.dhw_oil
+      - action: logbook.log
+        data:
+          name: "\U0001F525 Heat Recovery"
+          message: 'Pump OFF | Miner outlet {{ outlet_temp }}°C | Boiler {{ boiler_temp
+            }}°C | Miner: {{ ''ON'' if miner_on else ''OFF'' }}'
+  mode: single
+  max_exceeded: silent
+- id: miner_chip_cooling
+  alias: ❄️ Miner Chip Cooling
+  description: Activates outside cooling when miner chip temp exceeds 75°C. Turns
+    off when miner is off.
+  triggers:
+  - trigger: numeric_state
+    entity_id:
+    - sensor.antminer_board_0_chip_temperature_2
+    above: 60
+  - trigger: state
+    entity_id: switch.antminer_active_2
+    to: 'off'
+  conditions: []
+  actions:
+  - choose:
+    - conditions:
+      - condition: numeric_state
+        entity_id: sensor.antminer_board_0_chip_temperature_2
+        above: 60
+      - condition: state
+        entity_id: switch.antminer_active_2
+        state: 'on'
+      sequence:
+      - action: switch.turn_on
+        target:
+          entity_id: switch.cooling_oil
+      - action: logbook.log
+        data:
+          name: ❄️ Chip Cooling
+          message: Cooling ON | Chip temp {{ states('sensor.antminer_board_0_chip_temperature_2')
+            }}°C > 75°C
+    - conditions:
+      - condition: state
+        entity_id: switch.antminer_active_2
+        state: 'off'
+      sequence:
+      - action: switch.turn_off
+        target:
+          entity_id: switch.cooling_oil
+      - action: logbook.log
+        data:
+          name: ❄️ Chip Cooling
+          message: Cooling OFF | Miner turned off
+  mode: single
+  max_exceeded: silent
+- id: '1775814778535'
+  alias: Notify When Block Found - Enhanced
+  description: Send notification to phone when miners find blocks, including best
+    share info
+  triggers:
+  - entity_id: sensor.s19_1_found_blocks
+    id: s19_block
+    trigger: state
+  - entity_id: sensor.antminer2_found_blocks
+    id: antminer2_block
+    trigger: state
+  conditions:
+  - condition: template
+    value_template: '{% set old_state = trigger.from_state.state | int(0) %} {% set
+      new_state = trigger.to_state.state | int(0) %} {{ new_state > old_state and
+      new_state != 0 }}
+
+      '
+  actions:
+  - data:
+      title: "\U0001F389 BLOCK FOUND! \U0001F389"
+      message: "{% if trigger.id == 's19_block' %}\n  \U0001F3C6 S19 Miner found a
+        block!\n  \U0001F4CA Total blocks: {{ states('sensor.s19_1_found_blocks')
+        }}\n  \U0001F3AF Best share: {{ states('sensor.s19_1_best_share') }}\n  ⏰
+        Time: {{ now().strftime('%H:%M:%S') }}\n{% else %}\n  \U0001F3C6 Antminer2
+        found a block!\n  \U0001F4CA Total blocks: {{ states('sensor.antminer2_found_blocks')
+        }}\n  \U0001F3AF Best share: {{ states('sensor.antminer2_best_share') }}\n
+        \ ⏰ Time: {{ now().strftime('%H:%M:%S') }}\n{% endif %}\n"
+      data:
+        notification_icon: mdi:bitcoin
+        color: green
+        importance: high
+        persistent: true
+        tag: block_found
+        actions:
+        - action: view_dashboard
+          title: View Dashboard
+        - action: dismiss
+          title: Dismiss
+        channel: Mining Alerts
+        sticky: true
+        vibrationPattern: 100,1000,100,1000,100
+    action: notify.mobile_app_YOUR_TABLET
+  - data:
+      name: Block Found
+      message: "{% if trigger.id == 's19_block' %}\n  S19 found block #{{ states('sensor.s19_1_found_blocks')
+        }} with best share {{ states('sensor.s19_1_best_share') }}\n{% else %}\n  Antminer2
+        found block #{{ states('sensor.antminer2_found_blocks') }} with best share
+        {{ states('sensor.antminer2_best_share') }}\n{% endif %}\n"
+      entity_id: "{% if trigger.id == 's19_block' %}\n  sensor.s19_1_found_blocks\n{%
+        else %}\n  sensor.antminer2_found_blocks\n{% endif %}\n"
+    action: logbook.log
+  mode: parallel
+  max: 10
+- id: '1775851460611'
+  alias: 2-Miner Enhanced Block Found Notification
+  description: ''
+  use_blueprint:
+    path: homeassistant/mining1.yaml
+    input:
+      notification_style: standard
+      notify_device: YOUR_NOTIFY_DEVICE_ID
+      miner_blocks: sensor.antminer_found_blocks
+      miner_best_share: sensor.antminer_best_share
+      miner_name: S21
+- id: boiler_schedule_control
+  alias: "\U0001F6BF Boiler Schedule Control"
+  description: Maintains boiler at schedule target with hysteresis band. Solar boost
+    takes priority when active.
+  mode: single
+  max_exceeded: silent
+  triggers:
+  - trigger: state
+    entity_id: sensor.tasmota_ds18b20_temperature
+  - trigger: time_pattern
+    minutes: /2
+  - trigger: time_pattern
+    hours: /1
+    minutes: '0'
+  conditions:
+  - condition: state
+    entity_id: input_boolean.boiler_auto_enabled
+    state: 'on'
+  - condition: or
+    conditions:
+    - condition: state
+      entity_id: input_boolean.boiler_solar_boost_enabled
+      state: 'off'
+    - condition: numeric_state
+      entity_id: sensor.victron_battery_current
+      below: 85
+  actions:
+  - variables:
+      temp: '{{ states(''sensor.tasmota_ds18b20_temperature'') | float(0) }}'
+      target: '{{ states(''sensor.boiler_active_target'') | float(45) }}'
+      band: '{{ states(''input_number.boiler_hysteresis'') | float(3) }}'
+      is_on: '{{ is_state(''switch.pdu_outlet_aa7'', ''on'') }}'
+  - choose:
+    - conditions:
+      - condition: template
+        value_template: '{{ temp < target }}'
+      sequence:
+      - action: switch.turn_on
+        target:
+          entity_id: switch.pdu_outlet_aa7
+      - action: logbook.log
+        data:
+          name: "\U0001F6BF Boiler Schedule"
+          message: 'ON | {{ temp }}°C < target {{ target }}°C | slot: {{ state_attr(''sensor.boiler_active_target'',
+            ''slot'') }} | band ±{{ band }}°C
+
+            '
+    - conditions:
+      - condition: template
+        value_template: '{{ temp >= target + band }}'
+      sequence:
+      - action: switch.turn_off
+        target:
+          entity_id: switch.pdu_outlet_aa7
+      - action: logbook.log
+        data:
+          name: "\U0001F6BF Boiler Schedule"
+          message: 'OFF | {{ temp }}°C >= {{ target + band }}°C (target {{ target
+            }}°C + band {{ band }}°C)
+
+            '
+- id: boiler_battery_boost
+  alias: ⚡ Boiler Battery Boost (>90A)
+  description: Heats boiler using solar surplus when battery charging current exceeds
+    90A. Hard cap at 80°C.
+  mode: single
+  max_exceeded: silent
+  triggers:
+  - trigger: numeric_state
+    entity_id: sensor.victron_battery_current
+    above: 90
+  - trigger: numeric_state
+    entity_id: sensor.victron_battery_current
+    below: 85
+  - trigger: numeric_state
+    entity_id: sensor.tasmota_ds18b20_temperature
+    above: 80
+  conditions:
+  - condition: state
+    entity_id: input_boolean.boiler_solar_boost_enabled
+    state: 'on'
+  actions:
+  - variables:
+      temp: '{{ states(''sensor.tasmota_ds18b20_temperature'') | float(0) }}'
+      battery_amps: '{{ states(''sensor.victron_battery_current'') | float(0) }}'
+      boost_on: '{{ battery_amps > 90 and temp < 80 }}'
+  - choose:
+    - conditions:
+      - condition: template
+        value_template: '{{ boost_on }}'
+      sequence:
+      - action: switch.turn_on
+        target:
+          entity_id: switch.pdu_outlet_aa7
+      - action: logbook.log
+        data:
+          name: ⚡ Boiler Boost
+          message: 'ON | Battery {{ battery_amps | round(0) }}A > 90A | Boiler {{
+            temp }}°C (cap 80°C)
+
+            '
+    - conditions:
+      - condition: template
+        value_template: '{{ not boost_on }}'
+      sequence:
+      - action: switch.turn_off
+        target:
+          entity_id: switch.pdu_outlet_aa7
+      - action: logbook.log
+        data:
+          name: ⚡ Boiler Boost
+          message: 'OFF | Battery {{ battery_amps | round(0) }}A | Boiler {{ temp
+            }}°C | {{ ''Cap reached (80°C)'' if temp >= 80 else ''Solar insufficient''
+            }}
+
+            '
+- id: miner_cooling_pump_on
+  alias: ❄️ Miner Cooling Pump - Start - S21
+  description: Turn on cooling oil pump immediately when miner activates
+  triggers:
+  - trigger: state
+    entity_id: switch.antminer_active_2
+    to: 'on'
+  conditions: []
+  actions:
+  - action: switch.turn_on
+    target:
+      entity_id:
+      - switch.cooling_oil
+      - switch.tasmotas3
+    data: {}
+  - action: logbook.log
+    data:
+      name: ❄️ Miner Cooling
+      message: Cooling pump ON — miner started
+  mode: single
+  max_exceeded: silent
+- id: miner_cooling_pump_off_delay
+  alias: ❄️ Miner Cooling Pump - Stop (5 min delay) - S21
+  description: Keep cooling oil pump running for 5 minutes after miner turns off
+  triggers:
+  - trigger: state
+    entity_id: switch.antminer_active_2
+    to: 'off'
+  conditions: []
+  actions:
+  - delay:
+      minutes: 5
+  - condition: state
+    entity_id: switch.antminer_active_2
+    state: 'off'
+  - action: switch.turn_off
+    target:
+      entity_id:
+      - switch.cooling_oil
+      - switch.tasmotas3
+    data: {}
+  - action: logbook.log
+    data:
+      name: ❄️ Miner Cooling
+      message: Cooling pump OFF — 5 min post-miner cooldown complete
+  mode: restart
+  max_exceeded: silent
+- id: '1777705158363'
+  alias: Block-s19
+  description: ''
+  use_blueprint:
+    path: homeassistant/mining1.yaml
+    input:
+      notification_style: standard
+      notify_device: YOUR_NOTIFY_DEVICE_ID
+      miner_blocks: sensor.s19_1_found_blocks
+      miner_best_share: sensor.s19_1_best_share
+      miner_name: S19
+- id: '1777752299141'
+  alias: ❄️ Turn on oil - S19
+  description: Turn on cooling oil pump immediately when miner activates
+  triggers:
+  - trigger: state
+    entity_id:
+    - switch.antminer_active
+    to:
+    - 'on'
+  conditions: []
+  actions:
+  - action: switch.turn_on
+    target:
+      entity_id:
+      - switch.pdu_outlet_aa18
+    data: {}
+  - action: logbook.log
+    data:
+      name: ❄️ Miner Cooling
+      message: Cooling pump ON — miner started
+  mode: single
+  max_exceeded: silent
+- id: '1777754140112'
+  alias: ❄️ Turn Off Oil - Stop (5 min delay) - S19
+  description: Keep cooling oil pump running for 5 minutes after miner turns off
+  triggers:
+  - trigger: state
+    entity_id:
+    - switch.antminer_active
+    to:
+    - 'off'
+  conditions: []
+  actions:
+  - delay:
+      minutes: 5
+  - condition: state
+    entity_id: switch.antminer_active_2
+    state: 'off'
+  - action: switch.turn_off
+    target:
+      entity_id:
+      - switch.pdu_outlet_aa18
+    data: {}
+  - action: logbook.log
+    data:
+      name: ❄️ Miner Cooling
+      message: Cooling pump OFF — 5 min post-miner cooldown complete
+  mode: restart
+  max_exceeded: silent
+- id: mining_ml_weekly_retrain
+  alias: "🧠 ML Weekly Retrain"
+  description: Retrains ML model weekly at 03:00 using accumulated training data
+  triggers:
+  - trigger: time
+    at: "03:00:00"
+  conditions: []
+  actions:
+  - alias: Run ML retrain script
+    action: shell_command.run_mining_ml_retrain
+    response_variable: retrain_response
+  - alias: Extract retrain stdout
+    variables:
+      retrain_stdout: '{{ retrain_response.stdout | default(retrain_response | string) }}'
+  - alias: Log retrain results
+    action: logbook.log
+    data:
+      name: ML Retrain
+      message: Weekly retrain complete
+  - alias: Notify retrain results
+    if:
+    - condition: template
+      value_template: '{{ retrain_stdout | default('''') | length > 0 }}'
+    then:
+    - action: persistent_notification.create
+      data:
+        title: "\U0001f9e0 ML Model Retrained"
+        message: '{{ retrain_stdout }}'
+        notification_id: ml_retrain_weekly
+  mode: single
+  max_exceeded: silent
+- id: mining_ml_retrain_grid_spike
+  alias: "🧠 ML Retrain — Grid Import Spike"
+  description: Trigger retrain when grid import exceeds 500W for 10+ minutes
+  triggers:
+  - trigger: numeric_state
+    entity_id: sensor.victron_vebus_activein_l1_power_227
+    above: 500
+    for:
+      minutes: 10
+  conditions: []
+  actions:
+  - alias: Run ML retrain
+    action: shell_command.run_mining_ml_retrain
+    response_variable: retrain_response
+  - action: logbook.log
+    data:
+      name: ML Retrain
+      message: Triggered by grid import spike
+  mode: single
+  max_exceeded: silent
+- id: mining_ml_retrain_soc_drop
+  alias: "🧠 ML Retrain — SoC Critical Drop"
+  description: Trigger retrain when battery SoC drops below 12% unexpectedly
+  triggers:
+  - trigger: numeric_state
+    entity_id: sensor.infinisolar_v_multiphase_x_3_battery_state_of_charge
+    below: 12
+  conditions:
+  - condition: state
+    entity_id: switch.antminer_active_2
+    state: "on"
+  actions:
+  - alias: Run ML retrain
+    action: shell_command.run_mining_ml_retrain
+    response_variable: retrain_response
+  - action: logbook.log
+    data:
+      name: ML Retrain
+      message: Triggered by SoC drop below 12%
+  mode: single
+  max_exceeded: silent
+- id: mining_ml_retrain_wasted_solar
+  alias: "🧠 ML Retrain — Wasted Solar Energy"
+  description: Trigger retrain when solar surplus > 4000W but miner is off
+  triggers:
+  - trigger: numeric_state
+    entity_id: sensor.solar_surplus_power
+    above: 4000
+    for:
+      minutes: 15
+  conditions:
+  - condition: state
+    entity_id: switch.antminer_active_2
+    state: "off"
+  actions:
+  - alias: Run ML retrain
+    action: shell_command.run_mining_ml_retrain
+    response_variable: retrain_response
+  - action: logbook.log
+    data:
+      name: ML Retrain
+      message: Triggered by wasted solar energy
+  mode: single
+  max_exceeded: silent

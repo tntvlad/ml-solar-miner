@@ -39,12 +39,24 @@ BATTERY_SOC_MIN = 12
 BATTERY_SOC_CRITICAL = 10
 DEFAULT_BATTERY_CAPACITY_KWH = 69.6
 
-# Grid import tolerance
+# Grid import (positive watts = import from grid)
 GRID_IMPORT_TOLERANCE = 100
+GRID_IMPORT_REDUCE_W = 300
+GRID_IMPORT_RETRAIN_W = 500
+GRID_IMPORT_RETRAIN_MINUTES = 10
+MISSED_SURPLUS_W = 4000
+MISSED_SURPLUS_MINUTES = 15
+
+# Auto-retrain
+RETRAIN_EVENT_COOLDOWN_SECONDS = 3600
+WEEKLY_RETRAIN_WEEKDAY = 6  # Sunday
+WEEKLY_RETRAIN_HOUR = 3
+SUNRISE_HOUR = 6.5
 
 # ML training
 DEFAULT_MIN_SAMPLES_FOR_MODEL = 50
 MIN_SAMPLES_FOR_TEACHER_ONLY = 20
+MIN_SAMPLES_FOR_FORCE = 2
 DEFAULT_RETRAIN_INTERVAL = 604800  # 7 days in seconds
 CROSS_VAL_FOLDS = 5
 
@@ -101,3 +113,29 @@ LEGACY_ML_MODELS_DIR = "ml_models"
 LEGACY_MODEL_FILENAME = "mining_model.pkl"
 LEGACY_TRAINING_CSV_FILENAME = "training_data.csv"
 LEGACY_METRICS_FILENAME = "training_metrics.json"
+
+# Sensor keys stored on the config entry
+SENSOR_STATE_KEYS = (
+    "solar_power_total",
+    "solar_surplus_power",
+    "battery_soc",
+    "battery_voltage",
+    "battery_current",
+    "battery_power",
+    "battery_kwh_available",
+    "battery_drain_rate",
+    "battery_hours_to_min",
+    "hours_until_sunrise",
+    "total_load_power",
+    "miner_consumption",
+    "forecast_tomorrow",
+    "forecast_day3",
+    "grid_power",
+    "mining_viability_score",
+)
+
+def get_entry_value(entry, key, default=None):
+    """Read a value from options, falling back to data for older entries."""
+    if key in entry.options:
+        return entry.options[key]
+    return entry.data.get(key, default)

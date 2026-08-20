@@ -4,7 +4,7 @@ retrain:
   fields:
     force:
       name: Force Retrain
-      description: Retrain even if below minimum samples.
+      description: Save the new model even if validation MAE did not improve, and train with as few as 2 samples.
       required: false
       default: false
       selector:

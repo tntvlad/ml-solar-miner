@@ -45,6 +45,9 @@
     },
     "error": {
       "entity_not_found": "Entity not found. Please select a valid entity."
+    },
+    "abort": {
+      "already_configured": "ML Solar Miner is already configured."
     }
   },
   "options": {
@@ -59,6 +62,42 @@
           "min_samples_for_model": "Min Samples for ML Model",
           "retrain_interval": "Auto-Retrain Interval (hours)"
         }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "ml_solar_miner_decision_mode": {
+        "name": "Decision Mode"
+      },
+      "ml_solar_miner_decision_reason": {
+        "name": "Decision Reason"
+      },
+      "ml_solar_miner_miner_power": {
+        "name": "Miner Power"
+      },
+      "ml_solar_miner_target_soc": {
+        "name": "Target SoC"
+      },
+      "ml_solar_miner_model_source": {
+        "name": "Model Source"
+      },
+      "ml_solar_miner_training_samples": {
+        "name": "Training Samples"
+      },
+      "ml_solar_miner_training_status": {
+        "name": "Training Status"
+      },
+      "ml_solar_miner_last_retrain": {
+        "name": "Last Retrain"
+      },
+      "ml_solar_miner_last_decision": {
+        "name": "Last Decision"
+      }
+    },
+    "switch": {
+      "ml_solar_miner_control": {
+        "name": "Auto Control"
       }
     }
   }
