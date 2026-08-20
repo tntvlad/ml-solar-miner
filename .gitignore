@@ -22,6 +22,9 @@ secrets.yaml.example
 lovelace_mining_ml_card.yaml
 HACS_CONVERSION_PLAN.md
 
+# Agent instruction files
+AGENTS.md
+
 # Editor
 *.swp
 *.swo
