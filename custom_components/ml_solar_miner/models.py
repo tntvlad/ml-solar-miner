@@ -11,6 +11,16 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
+try:
+    import numpy as np
+    from sklearn.ensemble import GradientBoostingRegressor
+    from sklearn.metrics import mean_absolute_error
+    from sklearn.model_selection import KFold
+
+    ML_AVAILABLE = True
+except ImportError:
+    ML_AVAILABLE = False
+
 from .const import (
     BATTERY_SOC_CRITICAL,
     BATTERY_SOC_MIN,
@@ -339,6 +349,8 @@ def rule_teacher(features: list[float], battery_capacity_kwh: float = 69.6) -> d
 
 def load_model(hass_config_path) -> tuple:
     """Load trained model from disk. Returns (model, feature_names)."""
+    if not ML_AVAILABLE:
+        return None, FEATURE_NAMES
     model_path = _get_model_path(hass_config_path)
     if not model_path.exists():
         return None, FEATURE_NAMES
@@ -462,8 +474,8 @@ def read_training_data(hass_config_path, live_state: dict | None = None) -> list
 
 
 def _make_regressor(n_samples: int):
-    from sklearn.ensemble import GradientBoostingRegressor
-
+    if not ML_AVAILABLE:
+        raise ImportError("scikit-learn is not installed")
     min_leaf = min(5, max(1, n_samples // 4))
     return GradientBoostingRegressor(
         n_estimators=100 if n_samples >= 20 else min(50, max(10, n_samples * 5)),
@@ -480,9 +492,11 @@ def train_model(rows: list[dict], min_samples: int = 50) -> tuple:
 
     Returns (model, val_score, top_features, importances).
     """
-    import numpy as np
-    from sklearn.metrics import mean_absolute_error
-    from sklearn.model_selection import KFold
+    if not ML_AVAILABLE:
+        raise ImportError(
+            "scikit-learn is not installed. ML features are disabled. "
+            "Install it manually: pip install scikit-learn numpy"
+        )
 
     valid_rows = [r for r in rows if _reward_is_present(r)]
     if len(valid_rows) < MIN_SAMPLES_FOR_FORCE:
@@ -535,6 +549,17 @@ def run_retrain(
     live_state: dict | None = None,
 ) -> dict:
     """Run a full retrain cycle. Returns metrics dict."""
+    if not ML_AVAILABLE:
+        metrics = {
+            "last_retrain": utc_now_iso(),
+            "total_samples": get_training_sample_count(hass_config_path),
+            "status": "ml_unavailable",
+            "message": "scikit-learn not installed. Install: pip install scikit-learn numpy",
+            "model_saved": False,
+        }
+        save_metrics(hass_config_path, metrics)
+        return metrics
+
     rows = read_training_data(hass_config_path, live_state=live_state)
     total = len(rows)
     floor = MIN_SAMPLES_FOR_FORCE if force else MIN_SAMPLES_FOR_TEACHER_ONLY

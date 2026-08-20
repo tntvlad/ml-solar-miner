@@ -10,7 +10,7 @@ from homeassistant.helpers import config_validation as cv
 
 from .const import DOMAIN
 from .coordinator import MLSolarMinerCoordinator
-from .models import migrate_legacy_data
+from .models import ML_AVAILABLE, migrate_legacy_data
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -19,6 +19,13 @@ PLATFORMS = [Platform.SENSOR, Platform.SWITCH]
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Set up ML Solar Miner from a config entry."""
+    if not ML_AVAILABLE:
+        _LOGGER.warning(
+            "scikit-learn/numpy not installed — ML model features disabled. "
+            "Integration will use rule-based decisions. "
+            "To enable ML: docker exec homeassistant pip install scikit-learn numpy"
+        )
+
     await hass.async_add_executor_job(migrate_legacy_data, hass.config.path)
 
     coordinator = MLSolarMinerCoordinator(hass, config_entry)

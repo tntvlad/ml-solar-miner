@@ -33,6 +33,7 @@ from .const import (
     get_entry_value,
 )
 from .models import (
+    ML_AVAILABLE,
     features_from_state,
     get_training_sample_count,
     grid_import_watts,
