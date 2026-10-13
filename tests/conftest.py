@@ -14,7 +14,7 @@ if "ml_solar_miner" not in sys.modules:
     pkg.__file__ = str(ROOT / "__init__.py")
     sys.modules["ml_solar_miner"] = pkg
 
-    for name in ("const", "models"):
+    for name in ("const", "models", "rule_engine"):
         spec = importlib.util.spec_from_file_location(
             f"ml_solar_miner.{name}", ROOT / f"{name}.py"
         )

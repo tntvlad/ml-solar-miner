@@ -10,18 +10,27 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .const import (
     BATTERY_SOC_MIN,
     CONF_AUTO_CONTROL,
+    CONF_BATTERY_CAPACITY_ENTITY,
     CONF_BATTERY_CAPACITY_KWH,
     CONF_GRID_INVERT,
     CONF_MINER_POWER_NUMBER,
     CONF_MINER_SWITCH,
     CONF_MIN_SAMPLES_FOR_MODEL,
+    CONF_MODEL_TYPE,
     CONF_RETRAIN_INTERVAL,
     CONF_SCAN_INTERVAL_OPTION,
+    CONF_TARGET_SOC_ENTITY,
+    CONF_TARGET_SOC_MORNING,
     DEFAULT_BATTERY_CAPACITY_KWH,
     DEFAULT_MIN_SAMPLES_FOR_MODEL,
+    DEFAULT_MODEL_TYPE,
     DEFAULT_RETRAIN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_TARGET_SOC_MORNING,
     DOMAIN,
+    ENGINE_AUTO,
+    ENGINE_ML,
+    ENGINE_RULE,
     GRID_IMPORT_RETRAIN_MINUTES,
     GRID_IMPORT_RETRAIN_W,
     MINER_POWER_MIN,
@@ -34,6 +43,7 @@ from .const import (
     WEEKLY_RETRAIN_WEEKDAY,
     get_entry_value,
 )
+from . import rule_engine
 from .models import (
     ML_AVAILABLE,
     apply_grid_sign,
@@ -49,6 +59,7 @@ from .models import (
     run_retrain,
     save_last_decision,
     target_soc_from_forecast,
+    utc_now,
     utc_now_iso,
     validate_decision,
 )
@@ -106,6 +117,18 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
         )
         self.update_interval = timedelta(seconds=scan_seconds)
         self.grid_invert = get_entry_value(config_entry, CONF_GRID_INVERT, False)
+        self.model_type = get_entry_value(
+            config_entry, CONF_MODEL_TYPE, DEFAULT_MODEL_TYPE
+        )
+        self.target_soc_morning = get_entry_value(
+            config_entry, CONF_TARGET_SOC_MORNING, DEFAULT_TARGET_SOC_MORNING
+        )
+        self.target_soc_entity = get_entry_value(
+            config_entry, CONF_TARGET_SOC_ENTITY, None
+        )
+        self.battery_capacity_entity = get_entry_value(
+            config_entry, CONF_BATTERY_CAPACITY_ENTITY, None
+        )
 
         self.entity_map = {
             key: config_entry.data.get(key) for key in SENSOR_STATE_KEYS
@@ -342,13 +365,43 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
                 else:
                     _LOGGER.warning("Entity %s not found, using default", entity_id)
 
+        # Optional dashboard helpers used by the rule engine: the morning target
+        # SoC and the battery capacity can be read live from input_number
+        # entities instead of the static options.
+        state["_target_soc_entity"] = self._read_entity_value(self.target_soc_entity)
+        state["_capacity_entity"] = self._read_entity_value(self.battery_capacity_entity)
+
         return state
 
+    def _read_entity_value(self, entity_id: str | None) -> float | None:
+        """Read a numeric value from an optional helper entity."""
+        if not entity_id:
+            return None
+        ent = self.hass.states.get(entity_id)
+        if ent is None or ent.state in ("unavailable", "unknown"):
+            return None
+        try:
+            return float(ent.state)
+        except (TypeError, ValueError):
+            return None
+
+    def _resolve_capacity_kwh(self, state: dict) -> float:
+        """Battery capacity: live helper entity when set, else the option."""
+        value = state.get("_capacity_entity")
+        if value is None or value <= 0:
+            return float(self.battery_capacity_kwh)
+        return float(value)
+
+    def _resolve_target_soc(self, state: dict) -> float:
+        """Morning target SoC: live helper entity when set, else the option."""
+        value = state.get("_target_soc_entity")
+        if value is None:
+            return float(self.target_soc_morning)
+        return float(value)
+
     def _run_decision(self, state: dict) -> dict:
-        """Synchronous ML inference — runs in executor thread."""
-        features = features_from_state(state)
+        """Synchronous decision — runs in executor thread."""
         samples = get_training_sample_count(self.hass_config_path)
-        forecast = float(state.get("forecast_tomorrow") or 0)
 
         if not self._model_loaded:
             self._model, _ = load_model(self.hass_config_path)
@@ -363,53 +416,85 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
             and (now - retrain_time).total_seconds() >= MODEL_SHADOW_DAYS * 86400
         )
 
-        use_model = (
+        model_ready = (
             ML_AVAILABLE
             and self._model is not None
             and samples >= self.min_samples_for_model
             and shadow_ok
         )
 
-        # Determine previous miner state for teacher hysteresis
-        prev_miner_active = state.get("miner_is_on", "off")
-        if prev_miner_active not in ("on", "off"):
-            prev_miner_active = "off"
+        target_soc = self._resolve_target_soc(state)
 
-        if use_model:
-            import numpy as np
-
-            predicted_power = int(self._model.predict(np.array([features]))[0])
-            mode = (
-                "day_solar"
-                if float(state.get("solar_power_total") or 0) > 100
-                else "night_drain"
-            )
-            decision = {
-                "miner_active": "on" if predicted_power >= MINER_POWER_MIN else "off",
-                "miner_power": predicted_power,
-                "target_soc_by_sunrise": 30,
-                "mode": mode,
-                "reason": "ML residual prediction",
-            }
-            source = "ml_model"
-        else:
-            decision = rule_teacher(
-                features,
-                self.battery_capacity_kwh,
-                prev_miner_active=prev_miner_active,
+        if self._use_rule_engine(model_ready):
+            decision = rule_engine.decide(
+                state,
+                capacity_kwh=self._resolve_capacity_kwh(state),
+                target_soc_morning=target_soc,
+                grid_invert=self.grid_invert,
             )
             source = "rule_teacher"
+        else:
+            features = features_from_state(state)
 
-        decision["_soc"] = state.get("battery_soc", 50)
-        decision["_grid_power"] = apply_grid_sign(
-            _as_float(state.get("grid_power"), 0), self.grid_invert
-        )
-        decision = validate_decision(decision)
+            # Determine previous miner state for teacher hysteresis
+            prev_miner_active = state.get("miner_is_on", "off")
+            if prev_miner_active not in ("on", "off"):
+                prev_miner_active = "off"
+
+            if model_ready:
+                import numpy as np
+
+                predicted_power = int(self._model.predict(np.array([features]))[0])
+                mode = (
+                    "day_solar"
+                    if _as_float(state.get("solar_power_total"), 0) > 100
+                    else "night_drain"
+                )
+                decision = {
+                    "miner_active": (
+                        "on" if predicted_power >= MINER_POWER_MIN else "off"
+                    ),
+                    "miner_power": predicted_power,
+                    "target_soc_by_sunrise": int(target_soc),
+                    "mode": mode,
+                    "reason": "ML residual prediction",
+                }
+                source = "ml_model"
+            else:
+                decision = rule_teacher(
+                    features,
+                    self._resolve_capacity_kwh(state),
+                    prev_miner_active=prev_miner_active,
+                )
+                source = "rule_teacher"
+
+            decision["_soc"] = state.get("battery_soc", 50)
+            decision["_grid_power"] = apply_grid_sign(
+                _as_float(state.get("grid_power"), 0), self.grid_invert
+            )
+            decision = validate_decision(decision)
+
         decision["source"] = source
         decision["training_samples"] = samples
         decision["timestamp"] = utc_now_iso()
 
         return decision
+
+    def _use_rule_engine(self, model_ready: bool) -> bool:
+        """Return True when the script-identical rule engine should decide.
+
+        - rule: always use the rule engine.
+        - ml / auto: use the rule engine until the ML model is ready.
+        """
+        if self.model_type == ENGINE_RULE:
+            return True
+        return not model_ready
+
+    def active_engine(self, model_ready: bool | None = None) -> str:
+        """Return the engine that would be used for the next decision."""
+        if model_ready is None:
+            model_ready = ML_AVAILABLE and self._model is not None
+        return ENGINE_RULE if self._use_rule_engine(model_ready) else ENGINE_ML
 
     async def _apply_decision(self, decision: dict) -> None:
         """Apply miner switch and power level via HA services."""
@@ -479,6 +564,8 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
         """Return current status for service response."""
         return {
             "auto_control": self.auto_control,
+            "model_type": self.model_type,
+            "active_engine": self.active_engine(),
             "last_decision": self.last_decision,
             "training_samples": self.training_samples,
             "model_loaded": self._model is not None,

@@ -32,14 +32,19 @@
         }
       },
       "options": {
-        "title": "ML Options",
-        "description": "Configure ML engine behavior.",
+        "title": "Engine & Options",
+        "description": "Choose the decision engine and configure its behavior.",
         "data": {
+          "model_type": "Decision Engine",
+          "target_soc_morning": "Morning Target SoC (%)",
+          "target_soc_entity": "Target SoC Helper Entity (optional)",
+          "battery_capacity_entity": "Battery Capacity Helper Entity (optional)",
           "scan_interval": "Decision Interval (minutes)",
           "auto_control": "Auto-Apply Decisions",
           "battery_capacity_kwh": "Battery Capacity (kWh)",
           "min_samples_for_model": "Min Samples for ML Model",
-          "retrain_interval": "Auto-Retrain Interval (hours)"
+          "retrain_interval": "Auto-Retrain Interval (hours)",
+          "grid_invert": "Grid sign inverted (positive = export)"
         }
       }
     },
@@ -54,13 +59,18 @@
     "step": {
       "init": {
         "title": "ML Solar Miner Options",
-        "description": "Configure ML engine behavior.",
+        "description": "Choose the decision engine and configure its behavior.",
         "data": {
+          "model_type": "Decision Engine",
+          "target_soc_morning": "Morning Target SoC (%)",
+          "target_soc_entity": "Target SoC Helper Entity (optional)",
+          "battery_capacity_entity": "Battery Capacity Helper Entity (optional)",
           "scan_interval": "Decision Interval (minutes)",
           "auto_control": "Auto-Apply Decisions",
           "battery_capacity_kwh": "Battery Capacity (kWh)",
           "min_samples_for_model": "Min Samples for ML Model",
-          "retrain_interval": "Auto-Retrain Interval (hours)"
+          "retrain_interval": "Auto-Retrain Interval (hours)",
+          "grid_invert": "Grid sign inverted (positive = export)"
         }
       }
     }
@@ -81,6 +91,9 @@
       },
       "ml_solar_miner_model_source": {
         "name": "Model Source"
+      },
+      "ml_solar_miner_engine": {
+        "name": "Engine"
       },
       "ml_solar_miner_training_samples": {
         "name": "Training Samples"

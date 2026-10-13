@@ -43,7 +43,9 @@ MINER_POWER_STEP = 100
 # Battery safety thresholds
 BATTERY_SOC_MIN = 12
 BATTERY_SOC_CRITICAL = 10
+TARGET_SOC_MAX = 65
 DEFAULT_BATTERY_CAPACITY_KWH = 69.6
+DEFAULT_TARGET_SOC_MORNING = 30
 
 # Grid import (positive watts = import from grid after sign convention applied)
 GRID_IMPORT_TOLERANCE = 100
@@ -111,6 +113,22 @@ CONF_BATTERY_CAPACITY_KWH = "battery_capacity_kwh"
 CONF_MIN_SAMPLES_FOR_MODEL = "min_samples_for_model"
 CONF_RETRAIN_INTERVAL = "retrain_interval"
 CONF_GRID_INVERT = "grid_invert"
+
+# Decision engine selection -------------------------------------------------
+# rule  -> always use the standalone script's rule engine (rule_engine.py)
+# ml    -> use the trained ML model, falling back to the rule engine
+# auto  -> use ML once it is ready, otherwise the rule engine
+CONF_MODEL_TYPE = "model_type"
+ENGINE_RULE = "rule"
+ENGINE_ML = "ml"
+ENGINE_AUTO = "auto"
+ENGINE_OPTIONS = (ENGINE_RULE, ENGINE_ML, ENGINE_AUTO)
+DEFAULT_MODEL_TYPE = ENGINE_AUTO
+
+# Rule engine settings (mirrors the legacy /config/scripts/mining_ml_utils.py)
+CONF_TARGET_SOC_MORNING = "target_soc_morning"
+CONF_TARGET_SOC_ENTITY = "target_soc_entity"
+CONF_BATTERY_CAPACITY_ENTITY = "battery_capacity_entity"
 
 # Entity attribute keys
 ATTR_LAST_RETRAIN = "last_retrain"

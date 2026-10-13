@@ -42,7 +42,7 @@ class MLSolarMinerControlSwitch(SwitchEntity):
             name="ML Solar Miner",
             manufacturer="ML Solar Miner",
             model="ML Decision Engine",
-            sw_version="1.0.1",
+            sw_version="1.2.0",
         )
 
     @property

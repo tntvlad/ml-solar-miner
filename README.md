@@ -21,6 +21,18 @@ ML-powered Bitcoin miner power management for Home Assistant. Uses machine learn
 - **Shadow period** — teacher runs alone for the first 7 days before the model is allowed to act
 - **Optional ML stack** — integration works on all platforms including Raspberry Pi; scikit-learn can be installed later
 
+### Decision Engines
+
+On install (and later via **Configure → Options**) you choose which engine decides:
+
+| Engine | Behavior |
+|--------|-----------|
+| **Rule-based** | A faithful, byte-for-byte port of the standalone `/config/scripts/mining_ml_utils.py` engine — solar-surplus day mode, night drain to your morning target SoC. Runs on any platform, no ML needed. |
+| **Machine Learning** | The residual ML model; falls back to the rule engine until the model is trained and past its shadow period. |
+| **Auto** (default) | ML once it is ready, otherwise the rule engine. |
+
+Both engines drive the same in-process coordinator, watchdog and services — you can switch engines at any time without restarting Home Assistant. The rule engine reads its two "dashboard settings" (morning target SoC and battery capacity) from static options **or** live from `input_number` helper entities you select.
+
 ### Decision Modes
 
 - **DAY (solar)**: Matches miner power to real-time solar surplus (3500–6000W) with **hysteresis** to prevent on/off chattering at the boundary
@@ -202,7 +214,11 @@ Map your HA sensor entities to the 17 ML engine inputs. Entity selectors make th
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| Decision Interval | 20 min | How often the ML engine runs |
+| Decision Engine | Auto | `Rule` (identical to the standalone script), `ML`, or `Auto` |
+| Morning Target SoC | 30 % | Night-drain target for the rule engine |
+| Target SoC Helper | — | Optional `input_number` that overrides the target live |
+| Battery Capacity Helper | — | Optional `input_number` that overrides capacity live |
+| Decision Interval | 20 min | How often the engine runs |
 | Auto-Apply | Yes | Automatically apply decisions to the miner |
 | Battery Capacity | 69.6 kWh | Total battery bank capacity |
 | Min Samples for ML | 50 | Training samples before ML takes over |
@@ -220,6 +236,7 @@ Map your HA sensor entities to the 17 ML engine inputs. Entity selectors make th
 | `sensor.ml_solar_miner_miner_power` | Sensor | Target miner power in watts |
 | `sensor.ml_solar_miner_target_soc` | Sensor | Target battery SoC by sunrise (%) |
 | `sensor.ml_solar_miner_model_source` | Sensor | `ml_model` or `rule_teacher` |
+| `sensor.ml_solar_miner_engine` | Sensor | Configured engine (`rule`, `ml`, `auto`) + `active_engine` attribute |
 | `sensor.ml_solar_miner_training_samples` | Sensor | Total training rows in CSV |
 | `sensor.ml_solar_miner_training_status` | Sensor | Last retrain status + metrics |
 | `sensor.ml_solar_miner_last_retrain` | Sensor | Timestamp of last retrain |

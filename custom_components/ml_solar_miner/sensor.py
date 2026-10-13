@@ -42,6 +42,7 @@ async def async_setup_entry(
         MLSolarMinerDecisionPowerSensor(coordinator, config_entry),
         MLSolarMinerTargetSocSensor(coordinator, config_entry),
         MLSolarMinerModelSourceSensor(coordinator, config_entry),
+        MLSolarMinerEngineSensor(coordinator, config_entry),
         MLSolarMinerTrainingSamplesSensor(coordinator, config_entry),
         MLSolarMinerTrainingStatusSensor(coordinator, config_entry),
         MLSolarMinerLastRetrainSensor(coordinator, config_entry),
@@ -65,7 +66,7 @@ class MLSolarMinerSensorBase(CoordinatorEntity):
             name="ML Solar Miner",
             manufacturer="ML Solar Miner",
             model="ML Decision Engine",
-            sw_version="1.0.1",
+            sw_version="1.2.0",
         )
 
 
@@ -137,6 +138,21 @@ class MLSolarMinerModelSourceSensor(MLSolarMinerSensorBase):
         if self.coordinator.last_decision:
             return self.coordinator.last_decision.get("source")
         return None
+
+
+class MLSolarMinerEngineSensor(MLSolarMinerSensorBase):
+    """Sensor for the configured decision engine."""
+
+    _attr_unique_id = "ml_solar_miner_engine"
+    _attr_translation_key = "ml_solar_miner_engine"
+
+    @property
+    def native_value(self) -> str | None:
+        return self.coordinator.model_type
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        return {"active_engine": self.coordinator.active_engine()}
 
 
 class MLSolarMinerTrainingSamplesSensor(MLSolarMinerSensorBase):
