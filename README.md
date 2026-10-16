@@ -13,13 +13,13 @@ ML-powered Bitcoin miner power management for Home Assistant. Uses machine learn
 
 ### ML Decision Engine
 
-- **Residual GradientBoostingRegressor** — learns *when and how much* to deviate from the rule teacher, instead of cloning the last decision
+- **Residual online model** — a River Adaptive Random Forest (`ARFRegressor`) learns *when and how much* to deviate from the rule teacher, instead of cloning the last decision
 - **Rule-based teacher fallback** replicates proven logic during bootstrap phase and as a safety net
 - **Time-split validation** — holdout test set (last 7 days) prevents future-leakage; model saves only when MAE improves
-- **Reward-weighted training** with configurable floor (`REWARD_FLOOR_FOR_TRAINING`) to exclude garbage rows
+- **Reward-filtered training** — rows below `REWARD_FLOOR_FOR_TRAINING` are dropped as garbage
 - **17 input features**: solar, battery, grid, forecasts, time-of-day (no miner state to prevent circular logic)
 - **Shadow period** — teacher runs alone for the first 7 days before the model is allowed to act
-- **Optional ML stack** — integration works on all platforms including Raspberry Pi; scikit-learn can be installed later
+- **Optional ML stack** — the rule engine works on all platforms including Raspberry Pi; the ML model needs the River dependency
 
 ### Decision Engines
 
@@ -55,6 +55,8 @@ Both engines drive the same in-process coordinator, watchdog and services — yo
 - **Watchdog** — independent 1-minute SoC/grid safety check, separate from the 20-minute decision cycle
 - **Persist last decision** — sensors show real values immediately after restart, not empty until first tick
 - **Grid sign convention** — `grid_invert` option for Victron (positive = export) vs Fronius (positive = import)
+- **Capacity auto-tune** — optionally derives the true battery-bank capacity from the system power balance vs the BMS SoC, and applies it gradually
+- **Fail-safe on missing data** — if the battery SoC sensor is unavailable, the watchdog holds the miner off instead of acting on a default
 - **Services** — `ml_solar_miner.retrain` and `ml_solar_miner.decision`
 - **Legacy data migration** — auto-migrates training data from old shell_command setup
 
@@ -77,7 +79,7 @@ DataUpdateCoordinator
         ├── Load model from cache or disk (executor thread)
         │
         ├── If model exists + shadow OK + sample count ≥ min_samples:
-        │   └── GradientBoostingRegressor.predict() → residual
+        │   └── ARFRegressor.predict_one() → residual
         │   └── Final power = teacher_power + residual
         └── Else:
             └── Rule-based teacher (day_solar / night_drain)
@@ -94,7 +96,8 @@ DataUpdateCoordinator
 Entity States
     │
     ├── If miner ON and SoC < 12% → turn OFF
-    └── If miner ON and grid import > 500W → turn OFF
+    ├── If miner ON and grid import > 500W → turn OFF
+    └── If the battery SoC sensor is unavailable → turn OFF (fail-safe)
 ```
 
 ### Retraining Cycle
@@ -107,7 +110,7 @@ Trigger (weekly / event-driven / service call)
         ├── Filter rows with reward < REWARD_FLOOR_FOR_TRAINING (-10)
         ├── Sort by timestamp, time-split (last 7 days = test set)
         ├── Compute teacher power for each row → build residual targets
-        ├── Fit GradientBoostingRegressor on residuals (100 trees, depth 4)
+        ├── Fit a River Adaptive Random Forest on the residuals (online)
         ├── Time-split validation MAE (not shuffled K-fold)
         ├── Save only if validation MAE improves
         └── Update coordinator sensors
@@ -117,15 +120,13 @@ Trigger (weekly / event-driven / service call)
 
 | Parameter | Value |
 |-----------|-------|
-| Algorithm | GradientBoostingRegressor (residual) |
+| Algorithm | River `ARFRegressor` (adaptive random forest, online) |
 | Target | `actual_power - teacher_power` (residual, not direct) |
-| Estimators | 100 |
-| Max depth | 4 |
-| Learning rate | 0.1 |
-| Min samples leaf | 5 |
-| Subsample | 0.8 |
-| Validation | Time-split (last 7 days as test set) |
-| Weighting | Reward-weighted (high reward = more influence) |
+| Trees | 10 (reduced for small sample counts) |
+| Grace period | Scaled to the sample count (5–50) |
+| Feature importance | Permutation-based (River exposes none) |
+| Validation | Time-split (last 7 days as test set, MAE) |
+| Row filter | Rows below `REWARD_FLOOR_FOR_TRAINING` are excluded |
 
 ---
 
@@ -184,14 +185,19 @@ Trigger (weekly / event-driven / service call)
 
 ### Enabling ML (Optional)
 
-The integration works out of the box with the rule-based teacher. To enable the ML model:
+The integration works out of the box with the rule-based teacher. The ML model
+needs the [River](https://riverml.xyz/) online-learning library, which is declared
+in the integration manifest, so Home Assistant installs it automatically on setup.
+
+If your system can't install it automatically (offline, or a very small ARM host),
+install it manually and restart Home Assistant:
 
 ```bash
 # Docker
-docker exec -it homeassistant pip install scikit-learn numpy
+docker exec -it homeassistant pip install "river==0.26.1"
 
 # HA OS / Supervised (via terminal add-on)
-pip install scikit-learn numpy
+pip install "river==0.26.1"
 ```
 
 After installing, trigger a retrain via the `ml_solar_miner.retrain` service or wait for the next scheduled retrain. The model will begin learning after 7 days of shadow data collection.
@@ -218,9 +224,12 @@ Map your HA sensor entities to the 17 ML engine inputs. Entity selectors make th
 | Morning Target SoC | 30 % | Night-drain target for the rule engine |
 | Target SoC Helper | — | Optional `input_number` that overrides the target live |
 | Battery Capacity Helper | — | Optional `input_number` that overrides capacity live |
+| Emergency Lock Entity | `input_boolean.emergency_battery_lock` | While this `input_boolean` is on, mining is held off |
 | Decision Interval | 20 min | How often the engine runs |
 | Auto-Apply | Yes | Automatically apply decisions to the miner |
 | Battery Capacity | 69.6 kWh | Total battery bank capacity |
+| Capacity Autotune | No | Measure the real pack capacity from the power balance and adjust it |
+| Battery Efficiency | 95 % | One-way efficiency used by the capacity estimator (LiFePO4) |
 | Min Samples for ML | 50 | Training samples before ML takes over |
 | Auto-Retrain Interval | 168 hours | How often to retrain the model |
 | Grid Invert | No | Invert grid sign (Victron: positive = export) |
@@ -241,6 +250,7 @@ Map your HA sensor entities to the 17 ML engine inputs. Entity selectors make th
 | `sensor.ml_solar_miner_training_status` | Sensor | Last retrain status + metrics |
 | `sensor.ml_solar_miner_last_retrain` | Sensor | Timestamp of last retrain |
 | `sensor.ml_solar_miner_last_decision` | Sensor | Timestamp of last decision |
+| `sensor.ml_solar_miner_learned_capacity` | Sensor | Auto-tuned battery capacity (kWh) + estimator status/window attributes |
 | `switch.ml_solar_miner_control` | Switch | Enable/disable AI auto-control |
 
 ---
@@ -352,12 +362,13 @@ cards:
 ```
 custom_components/ml_solar_miner/
 ├── __init__.py          # Entry point, service registration, ML_AVAILABLE warning
-├── manifest.json        # HA integration metadata (ML deps optional)
+├── manifest.json        # HA integration metadata (declares the River requirement)
 ├── const.py             # Constants, 17 feature names, config keys, grid convention
 ├── config_flow.py       # 3-step UI config wizard
 ├── coordinator.py       # DataUpdateCoordinator + 1-min watchdog
 ├── models.py            # ML model (residual), teacher, reward, persistence
-├── sensor.py            # 9 sensor entities
+├── capacity_estimator.py # Adaptive battery-capacity estimator (no HA deps)
+├── sensor.py            # 11 sensor entities
 ├── switch.py            # Auto-control toggle switch
 ├── services.yaml        # Service definitions
 ├── strings.json         # UI strings
@@ -368,7 +379,8 @@ custom_components/ml_solar_miner/
 
 tests/
 ├── conftest.py          # Manual module loader (no HA required)
-└── test_models.py       # 36 unit tests for teacher, safety, reward, persistence
+├── test_models.py       # Unit tests for teacher, safety, reward, persistence
+└── test_rule_engine.py  # Unit tests for the rule engine
 ```
 
 ---

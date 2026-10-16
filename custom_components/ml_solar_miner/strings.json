@@ -39,9 +39,12 @@
           "target_soc_morning": "Morning Target SoC (%)",
           "target_soc_entity": "Target SoC Helper Entity (optional)",
           "battery_capacity_entity": "Battery Capacity Helper Entity (optional)",
+          "emergency_lock_entity": "Emergency Battery Lock Entity (optional)",
           "scan_interval": "Decision Interval (minutes)",
           "auto_control": "Auto-Apply Decisions",
           "battery_capacity_kwh": "Battery Capacity (kWh)",
+          "capacity_autotune": "Let ML measure and adjust battery capacity",
+          "battery_efficiency": "Battery efficiency (%)",
           "min_samples_for_model": "Min Samples for ML Model",
           "retrain_interval": "Auto-Retrain Interval (hours)",
           "grid_invert": "Grid sign inverted (positive = export)"
@@ -65,9 +68,12 @@
           "target_soc_morning": "Morning Target SoC (%)",
           "target_soc_entity": "Target SoC Helper Entity (optional)",
           "battery_capacity_entity": "Battery Capacity Helper Entity (optional)",
+          "emergency_lock_entity": "Emergency Battery Lock Entity (optional)",
           "scan_interval": "Decision Interval (minutes)",
           "auto_control": "Auto-Apply Decisions",
           "battery_capacity_kwh": "Battery Capacity (kWh)",
+          "capacity_autotune": "Let ML measure and adjust battery capacity",
+          "battery_efficiency": "Battery efficiency (%)",
           "min_samples_for_model": "Min Samples for ML Model",
           "retrain_interval": "Auto-Retrain Interval (hours)",
           "grid_invert": "Grid sign inverted (positive = export)"
@@ -106,6 +112,9 @@
       },
       "ml_solar_miner_last_decision": {
         "name": "Last Decision"
+      },
+      "ml_solar_miner_learned_capacity": {
+        "name": "Learned Battery Capacity"
       }
     },
     "switch": {

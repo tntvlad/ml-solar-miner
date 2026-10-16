@@ -37,14 +37,14 @@ from .const import (
     MODEL_OBSERVATION_DAYS,
     REWARD_FLOOR_FOR_TRAINING,
     SUNRISE_HOUR,
+    TRAINING_CSV_FIELDS,
     TRAINING_CSV_FILENAME,
     VIABILITY_FLOOR,
 )
 
 try:
     import numpy as np
-    from sklearn.ensemble import GradientBoostingRegressor
-    from sklearn.metrics import mean_absolute_error
+    from river.forest import ARFRegressor
 
     ML_AVAILABLE = True
 except ImportError:
@@ -442,7 +442,7 @@ def load_model(hass_config_path) -> tuple:
     try:
         with open(model_path, "rb") as f:
             return pickle.load(f), ML_FEATURE_NAMES
-    except Exception as err:  # noqa: BLE001 — pickle/sklearn version mismatches
+    except Exception as err:  # noqa: BLE001 — pickle/version mismatches
         _LOGGER.warning("Failed to load model %s (%s); using rule teacher", model_path, err)
         return None, ML_FEATURE_NAMES
 
@@ -513,7 +513,9 @@ def log_decision_to_csv(hass_config_path, state: dict, decision: dict) -> None:
     row["reward"] = ""
 
     with open(csv_path, "a", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=row.keys())
+        writer = csv.DictWriter(
+            f, fieldnames=list(TRAINING_CSV_FIELDS), extrasaction="ignore"
+        )
         if not file_exists:
             writer.writeheader()
         writer.writerow(row)
@@ -564,15 +566,15 @@ def read_training_data(hass_config_path, live_state: dict | None = None) -> list
 
     with open(csv_path, "r") as f:
         reader = csv.DictReader(f)
+        fieldnames = reader.fieldnames or list(TRAINING_CSV_FIELDS)
         rows = list(reader)
 
     rows = fill_rewards_and_outcomes(rows, live_state=live_state)
 
     with open(csv_path, "w", newline="") as f:
-        if rows:
-            writer = csv.DictWriter(f, fieldnames=rows[0].keys())
-            writer.writeheader()
-            writer.writerows(rows)
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
 
     return rows
 
@@ -581,27 +583,23 @@ def read_training_data(hass_config_path, live_state: dict | None = None) -> list
 # ML training — residual model with time-split validation
 # ---------------------------------------------------------------------------
 
-def sklearn_available() -> bool:
-    """Return True if scikit-learn can be imported."""
-    try:
-        import sklearn  # noqa: F401
-    except ImportError:
-        return False
-    return True
+def ml_backend_available() -> bool:
+    """Return True if the River ML backend can be imported."""
+    return ML_AVAILABLE
 
 
 def _make_regressor(n_samples: int):
+    """Build a fresh online regressor for the residual model.
+
+    River's Adaptive Random Forest is the closest online analogue of the batch
+    gradient-boosting ensemble this component used to build.  The split cadence
+    is scaled down for the small sample counts this integration sees.
+    """
     if not ML_AVAILABLE:
-        raise ImportError("scikit-learn is not installed")
-    min_leaf = min(5, max(1, n_samples // 4))
-    return GradientBoostingRegressor(
-        n_estimators=100 if n_samples >= 20 else min(50, max(10, n_samples * 5)),
-        max_depth=min(4, max(1, n_samples // 3)),
-        learning_rate=0.1,
-        min_samples_leaf=min_leaf,
-        subsample=0.8 if n_samples >= 10 else 1.0,
-        random_state=42,
-    )
+        raise ImportError("river is not installed")
+    n_models = 10 if n_samples >= 20 else max(3, min(10, n_samples // 2))
+    grace = max(5, min(50, n_samples // 4)) if n_samples else 50
+    return ARFRegressor(n_models=n_models, grace_period=grace, seed=42)
 
 
 def _parse_row_timestamp(row: dict) -> datetime | None:
@@ -609,12 +607,61 @@ def _parse_row_timestamp(row: dict) -> datetime | None:
     return parse_iso_datetime(row.get("timestamp"))
 
 
+def _mae(y_true: list[float], y_pred: list[float]) -> float:
+    """Mean absolute error over two equal-length sequences."""
+    if not y_true:
+        return 0.0
+    arr_true = np.asarray(y_true, dtype=float)
+    arr_pred = np.asarray(y_pred, dtype=float)
+    return float(np.mean(np.abs(arr_true - arr_pred)))
+
+
+def _predict_row(model, row_features: list[float]) -> float:
+    """Predict the residual for one feature vector."""
+    prediction = model.predict_one(dict(zip(ML_FEATURE_NAMES, row_features)))
+    return float(prediction) if prediction is not None else 0.0
+
+
+def _permutation_importances(
+    model, X: list[list[float]], y: list[float], n_repeats: int = 3
+) -> list[float]:
+    """Model-agnostic feature importance via permutation of the train set.
+
+    River regressors expose no ``feature_importances_``; permuting each column
+    and measuring the MAE increase recovers a comparable ranking.
+    """
+    if not X:
+        return [0.0] * len(ML_FEATURE_NAMES)
+
+    baseline = _mae(y, [_predict_row(model, row) for row in X])
+    rng = np.random.default_rng(42)
+    importances: list[float] = []
+
+    for col in range(len(ML_FEATURE_NAMES)):
+        deltas = []
+        for _ in range(n_repeats):
+            order = rng.permutation(len(X))
+            permuted = [list(row) for row in X]
+            shuffled_col = [X[i][col] for i in order]
+            for row_i in range(len(permuted)):
+                permuted[row_i][col] = shuffled_col[row_i]
+            score = _mae(y, [_predict_row(model, row) for row in permuted])
+            deltas.append(max(0.0, score - baseline))
+        importances.append(float(np.mean(deltas)))
+
+    total = sum(importances)
+    if total > 0:
+        importances = [value / total for value in importances]
+    return importances
+
+
 def train_model(rows: list[dict], min_samples: int = 50) -> tuple:
     """Train a residual model on historical data.
 
     The model predicts the RESIDUAL:  y = actual_good_power - teacher_power
     rather than cloning the last decision.  This lets the model learn *when
-    and how much* to deviate from the rule teacher.
+    and how much* to deviate from the rule teacher.  The coordinator adds the
+    teacher power back before applying the value.
 
     Validation uses a time split (last MODEL_OBSERVATION_DAYS as test set)
     instead of shuffled K-fold so we don't leak future into past.
@@ -625,8 +672,8 @@ def train_model(rows: list[dict], min_samples: int = 50) -> tuple:
     """
     if not ML_AVAILABLE:
         raise ImportError(
-            "scikit-learn is not installed. ML features are disabled. "
-            "Install it manually: pip install scikit-learn numpy"
+            "river is not installed. ML features are disabled. "
+            "Add it to the integration requirements to enable the model."
         )
 
     valid_rows = [
@@ -642,55 +689,45 @@ def train_model(rows: list[dict], min_samples: int = 50) -> tuple:
     # Sort by timestamp for time-split
     valid_rows.sort(key=lambda r: r.get("timestamp", ""))
 
-    # Compute teacher prediction for each row to build residual targets
-    teacher_power = []
+    # Build residual targets from the rule teacher
+    X: list[list[float]] = []
+    y: list[float] = []
     for row in valid_rows:
-        feat = [_as_float(row.get(name), 0) for name in ML_FEATURE_NAMES]
-        td = rule_teacher(feat)
-        teacher_power.append(float(td["miner_power"]))
-
-    X = []
-    y = []
-    weights = []
-    for i, row in enumerate(valid_rows):
         features = [_as_float(row.get(name), 0) for name in ML_FEATURE_NAMES]
+        teacher = rule_teacher(features)
         actual_power = _as_float(row.get("decision_miner_power"), 3500)
-        reward = _as_float(row.get("reward"), 0)
-
         # Residual target: how much better/worse than teacher
-        residual = actual_power - teacher_power[i]
-
         X.append(features)
-        y.append(residual)
-        weights.append(max(0.1, 1.0 + reward / 30.0))
+        y.append(actual_power - float(teacher["miner_power"]))
 
-    X = np.array(X)
-    y = np.array(y)
-    weights = np.array(weights)
     n_samples = len(X)
 
     # Time-split: last MODEL_OBSERVATION_DAYS as test set
     cutoff_str = (utc_now() - timedelta(days=MODEL_OBSERVATION_DAYS)).isoformat()
-    test_mask = np.array(
-        [r.get("timestamp", "") >= cutoff_str for r in valid_rows]
-    )
-    train_mask = ~test_mask
+    test_idx = [
+        i for i, r in enumerate(valid_rows) if r.get("timestamp", "") >= cutoff_str
+    ]
+    test_set = set(test_idx)
+    train_idx = [i for i in range(n_samples) if i not in test_set]
 
-    n_train = int(train_mask.sum())
-    n_test = int(test_mask.sum())
+    def _fit(indices: list[int]):
+        fitted = _make_regressor(len(indices))
+        for i in indices:
+            fitted.learn_one(dict(zip(ML_FEATURE_NAMES, X[i])), y[i])
+        return fitted
 
     val_score = None
-    if n_train >= MIN_SAMPLES_FOR_FORCE and n_test >= MIN_SAMPLES_FOR_FORCE:
-        model = _make_regressor(n_train)
-        model.fit(X[train_mask], y[train_mask], sample_weight=weights[train_mask])
-        pred = model.predict(X[test_mask])
-        val_score = float(mean_absolute_error(y[test_mask], pred))
+    if len(train_idx) >= MIN_SAMPLES_FOR_FORCE and len(test_idx) >= MIN_SAMPLES_FOR_FORCE:
+        model = _fit(train_idx)
+        val_score = _mae(
+            [y[i] for i in test_idx], [_predict_row(model, X[i]) for i in test_idx]
+        )
     else:
-        # Not enough data for time-split — train on everything without CV
-        model = _make_regressor(n_samples)
-        model.fit(X, y, sample_weight=weights)
+        # Not enough data for time-split, train on everything without CV
+        model = _fit(list(range(n_samples)))
 
-    importances = dict(zip(ML_FEATURE_NAMES, [float(v) for v in model.feature_importances_]))
+    importance_values = _permutation_importances(model, X, y)
+    importances = dict(zip(ML_FEATURE_NAMES, importance_values))
     top_features = sorted(importances.items(), key=lambda item: item[1], reverse=True)[:5]
 
     return model, val_score, top_features, importances
@@ -708,7 +745,7 @@ def run_retrain(
             "last_retrain": utc_now_iso(),
             "total_samples": get_training_sample_count(hass_config_path),
             "status": "ml_unavailable",
-            "message": "scikit-learn not installed. Install: pip install scikit-learn numpy",
+            "message": "river not installed. ML features are disabled.",
             "model_saved": False,
         }
         save_metrics(hass_config_path, metrics)

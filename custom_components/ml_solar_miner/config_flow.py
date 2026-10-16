@@ -9,10 +9,15 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector
 
 from .const import (
+    BATTERY_EFFICIENCY_MAX,
+    BATTERY_EFFICIENCY_MIN,
     BATTERY_SOC_MIN,
     CONF_AUTO_CONTROL,
     CONF_BATTERY_CAPACITY_ENTITY,
     CONF_BATTERY_CAPACITY_KWH,
+    CONF_BATTERY_EFFICIENCY,
+    CONF_CAPACITY_AUTOTUNE,
+    CONF_EMERGENCY_LOCK_ENTITY,
     CONF_GRID_INVERT,
     CONF_MINER_POWER_NUMBER,
     CONF_MINER_SWITCH,
@@ -23,6 +28,9 @@ from .const import (
     CONF_TARGET_SOC_ENTITY,
     CONF_TARGET_SOC_MORNING,
     DEFAULT_BATTERY_CAPACITY_KWH,
+    DEFAULT_BATTERY_EFFICIENCY,
+    DEFAULT_CAPACITY_AUTOTUNE,
+    DEFAULT_EMERGENCY_LOCK_ENTITY,
     DEFAULT_MIN_SAMPLES_FOR_MODEL,
     DEFAULT_MODEL_TYPE,
     DEFAULT_RETRAIN_INTERVAL,
@@ -113,6 +121,12 @@ def _options_schema(current: dict[str, Any]) -> vol.Schema:
                 CONF_BATTERY_CAPACITY_ENTITY,
                 current.get(CONF_BATTERY_CAPACITY_ENTITY),
             ): _entity_selector(["input_number", "number"]),
+            _optional_entity(
+                CONF_EMERGENCY_LOCK_ENTITY,
+                current.get(
+                    CONF_EMERGENCY_LOCK_ENTITY, DEFAULT_EMERGENCY_LOCK_ENTITY
+                ),
+            ): _entity_selector(["input_boolean"]),
             vol.Optional(
                 CONF_SCAN_INTERVAL_OPTION,
                 default=current.get(
@@ -128,6 +142,26 @@ def _options_schema(current: dict[str, Any]) -> vol.Schema:
                     CONF_BATTERY_CAPACITY_KWH, DEFAULT_BATTERY_CAPACITY_KWH
                 ),
             ): vol.All(vol.Coerce(float), vol.Range(min=1.0, max=1000.0)),
+            vol.Optional(
+                CONF_CAPACITY_AUTOTUNE,
+                default=current.get(
+                    CONF_CAPACITY_AUTOTUNE, DEFAULT_CAPACITY_AUTOTUNE
+                ),
+            ): bool,
+            vol.Optional(
+                CONF_BATTERY_EFFICIENCY,
+                default=current.get(
+                    CONF_BATTERY_EFFICIENCY, DEFAULT_BATTERY_EFFICIENCY
+                ),
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=BATTERY_EFFICIENCY_MIN,
+                    max=BATTERY_EFFICIENCY_MAX,
+                    step=1,
+                    mode=selector.NumberSelectorMode.SLIDER,
+                    unit_of_measurement=PERCENTAGE,
+                )
+            ),
             vol.Optional(
                 CONF_MIN_SAMPLES_FOR_MODEL,
                 default=current.get(
@@ -159,6 +193,12 @@ def _split_options(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str
         CONF_RETRAIN_INTERVAL: retrain_seconds,
         CONF_AUTO_CONTROL: user_input.pop(CONF_AUTO_CONTROL),
         CONF_BATTERY_CAPACITY_KWH: user_input.pop(CONF_BATTERY_CAPACITY_KWH),
+        CONF_CAPACITY_AUTOTUNE: user_input.pop(
+            CONF_CAPACITY_AUTOTUNE, DEFAULT_CAPACITY_AUTOTUNE
+        ),
+        CONF_BATTERY_EFFICIENCY: int(
+            user_input.pop(CONF_BATTERY_EFFICIENCY, DEFAULT_BATTERY_EFFICIENCY)
+        ),
         CONF_MIN_SAMPLES_FOR_MODEL: user_input.pop(CONF_MIN_SAMPLES_FOR_MODEL),
         CONF_GRID_INVERT: user_input.pop(CONF_GRID_INVERT, False),
         CONF_MODEL_TYPE: user_input.pop(CONF_MODEL_TYPE, DEFAULT_MODEL_TYPE),
@@ -168,6 +208,10 @@ def _split_options(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str
         CONF_TARGET_SOC_ENTITY: user_input.pop(CONF_TARGET_SOC_ENTITY, None) or None,
         CONF_BATTERY_CAPACITY_ENTITY: user_input.pop(
             CONF_BATTERY_CAPACITY_ENTITY, None
+        )
+        or None,
+        CONF_EMERGENCY_LOCK_ENTITY: user_input.pop(
+            CONF_EMERGENCY_LOCK_ENTITY, None
         )
         or None,
     }
@@ -271,6 +315,9 @@ class MLSolarMinerOptionsFlow(config_entries.OptionsFlow):
             CONF_BATTERY_CAPACITY_ENTITY: get_entry_value(
                 entry, CONF_BATTERY_CAPACITY_ENTITY, None
             ),
+            CONF_EMERGENCY_LOCK_ENTITY: get_entry_value(
+                entry, CONF_EMERGENCY_LOCK_ENTITY, DEFAULT_EMERGENCY_LOCK_ENTITY
+            ),
             CONF_SCAN_INTERVAL_OPTION: get_entry_value(
                 entry, CONF_SCAN_INTERVAL_OPTION, DEFAULT_SCAN_INTERVAL
             )
@@ -278,6 +325,12 @@ class MLSolarMinerOptionsFlow(config_entries.OptionsFlow):
             CONF_AUTO_CONTROL: get_entry_value(entry, CONF_AUTO_CONTROL, True),
             CONF_BATTERY_CAPACITY_KWH: get_entry_value(
                 entry, CONF_BATTERY_CAPACITY_KWH, DEFAULT_BATTERY_CAPACITY_KWH
+            ),
+            CONF_CAPACITY_AUTOTUNE: get_entry_value(
+                entry, CONF_CAPACITY_AUTOTUNE, DEFAULT_CAPACITY_AUTOTUNE
+            ),
+            CONF_BATTERY_EFFICIENCY: get_entry_value(
+                entry, CONF_BATTERY_EFFICIENCY, DEFAULT_BATTERY_EFFICIENCY
             ),
             CONF_MIN_SAMPLES_FOR_MODEL: get_entry_value(
                 entry, CONF_MIN_SAMPLES_FOR_MODEL, DEFAULT_MIN_SAMPLES_FOR_MODEL

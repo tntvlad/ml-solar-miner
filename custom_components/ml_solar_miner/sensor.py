@@ -2,9 +2,13 @@
 import logging
 from datetime import datetime
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, UnitOfPower
+from homeassistant.const import PERCENTAGE, UnitOfEnergy, UnitOfPower
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -47,12 +51,13 @@ async def async_setup_entry(
         MLSolarMinerTrainingStatusSensor(coordinator, config_entry),
         MLSolarMinerLastRetrainSensor(coordinator, config_entry),
         MLSolarMinerLastDecisionSensor(coordinator, config_entry),
+        MLSolarMinerLearnedCapacitySensor(coordinator, config_entry),
     ]
 
     async_add_entities(entities)
 
 
-class MLSolarMinerSensorBase(CoordinatorEntity):
+class MLSolarMinerSensorBase(CoordinatorEntity, SensorEntity):
     """Base class for ML Solar Miner sensors."""
 
     _attr_has_entity_name = True
@@ -219,3 +224,35 @@ class MLSolarMinerLastDecisionSensor(MLSolarMinerSensorBase):
         if not self.coordinator.last_decision:
             return None
         return parse_iso_datetime(self.coordinator.last_decision.get("timestamp"))
+
+
+class MLSolarMinerLearnedCapacitySensor(MLSolarMinerSensorBase):
+    """Sensor for the auto-tuned (learned) battery capacity."""
+
+    _attr_unique_id = "ml_solar_miner_learned_capacity"
+    _attr_translation_key = "ml_solar_miner_learned_capacity"
+    _attr_device_class = SensorDeviceClass.ENERGY_STORAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+
+    @property
+    def native_value(self) -> float | None:
+        return self.coordinator.learned_capacity_kwh
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        coordinator = self.coordinator
+        estimator = coordinator.capacity_estimator
+        attributes = {
+            "status": coordinator.capacity_status,
+            "capacity_autotune": coordinator.capacity_autotune,
+            "efficiency": coordinator.battery_efficiency,
+            "configured_capacity_kwh": coordinator.battery_capacity_kwh,
+            "configured_capacity_entity": coordinator.battery_capacity_entity,
+        }
+        if estimator is not None:
+            attributes["accepted_windows"] = estimator.window_count
+            attributes["required_windows"] = estimator.min_windows
+            attributes["latest_estimate_kwh"] = estimator.latest_estimate()
+            attributes["recent_windows"] = estimator.recent_windows()
+        return attributes

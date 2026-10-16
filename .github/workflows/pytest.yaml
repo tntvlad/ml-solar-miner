@@ -18,7 +18,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pytest scikit-learn numpy
+          # river is the ML backend declared in custom_components/ml_solar_miner/manifest.json
+          pip install pytest numpy "river==0.26.1"
 
       - name: Run tests
         run: |

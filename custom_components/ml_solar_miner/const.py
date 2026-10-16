@@ -129,6 +129,38 @@ DEFAULT_MODEL_TYPE = ENGINE_AUTO
 CONF_TARGET_SOC_MORNING = "target_soc_morning"
 CONF_TARGET_SOC_ENTITY = "target_soc_entity"
 CONF_BATTERY_CAPACITY_ENTITY = "battery_capacity_entity"
+# While this input_boolean is "on" the component holds the miner off (the legacy
+# decision engine had the same condition). Defaults to the helper the legacy
+# automations used, so a cutover keeps the lock working out of the box.
+CONF_EMERGENCY_LOCK_ENTITY = "emergency_lock_entity"
+DEFAULT_EMERGENCY_LOCK_ENTITY = "input_boolean.emergency_battery_lock"
+
+# Battery capacity auto-tune -------------------------------------------------
+# Measures the real pack capacity from the system power balance
+# (solar + grid import - load) against the SoC change reported by the BMS.
+# Needed here because the measured battery current only sees part of a bank
+# when extra batteries are wired in parallel.
+CONF_CAPACITY_AUTOTUNE = "capacity_autotune"
+DEFAULT_CAPACITY_AUTOTUNE = False
+CONF_BATTERY_EFFICIENCY = "battery_efficiency"
+DEFAULT_BATTERY_EFFICIENCY = 95  # percent, one-way (LiFePO4)
+BATTERY_EFFICIENCY_MIN = 80
+BATTERY_EFFICIENCY_MAX = 100
+
+# Accepted-window rules for the capacity estimator
+CAPACITY_SOC_LOW = 20.0  # avoid the flat bottom of the SoC curve
+CAPACITY_SOC_HIGH = 90.0  # avoid the flat top / tapering
+CAPACITY_MIN_SOC_DELTA = 15.0  # percentage points per window
+CAPACITY_MIN_WINDOW_MINUTES = 30.0
+CAPACITY_MAX_WINDOW_HOURS = 24.0
+CAPACITY_MIN_WINDOW_SAMPLES = 3
+CAPACITY_MIN_POWER_W = 100.0  # flows below this do not set a direction
+CAPACITY_MIN_WINDOWS = 3  # accepted windows before the value is applied
+CAPACITY_HISTORY_LIMIT = 20
+CAPACITY_MAX_CHANGE_PER_UPDATE = 0.20
+CAPACITY_SANITY_RATIO = 3.0
+CAPACITY_MIN_KWH = 10.0
+CAPACITY_MAX_KWH = 200.0
 
 # Entity attribute keys
 ATTR_LAST_RETRAIN = "last_retrain"
@@ -153,6 +185,23 @@ MODEL_FILENAME = "mining_model.pkl"
 TRAINING_CSV_FILENAME = "training_data.csv"
 METRICS_FILENAME = "training_metrics.json"
 LAST_DECISION_FILENAME = "last_decision.json"
+LEARNED_CAPACITY_FILENAME = "learned_capacity.json"
+
+# Canonical column order for the training CSV. Kept fixed (instead of trusting
+# the first row's keys) so the writer and the retrain reader always agree, even
+# when rows are rewritten or a column is added.
+TRAINING_CSV_FIELDS = tuple(ML_FEATURE_NAMES) + (
+    "timestamp",
+    "decision_miner_active",
+    "decision_miner_power",
+    "decision_target_soc_by_sunrise",
+    "decision_mode",
+    "decision_reason",
+    "outcome_soc_next_cycle",
+    "outcome_grid_import",
+    "outcome_miner_ran",
+    "reward",
+)
 
 # Legacy paths for migration
 LEGACY_ML_MODELS_DIR = "ml_models"

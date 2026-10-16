@@ -21,9 +21,8 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     """Set up ML Solar Miner from a config entry."""
     if not ML_AVAILABLE:
         _LOGGER.warning(
-            "scikit-learn/numpy not installed — ML model features disabled. "
-            "Integration will use rule-based decisions. "
-            "To enable ML: docker exec homeassistant pip install scikit-learn numpy"
+            "River ML backend not installed — ML model features disabled. "
+            "Integration will use rule-based decisions."
         )
 
     await hass.async_add_executor_job(migrate_legacy_data, hass.config.path)
@@ -47,13 +46,15 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         decision = await coordinator.async_request_decision()
         _LOGGER.info("Decision triggered: %s", decision)
 
-    hass.services.async_register(
-        DOMAIN,
-        "retrain",
-        handle_retrain,
-        schema=vol.Schema({vol.Optional("force", default=False): cv.boolean}),
-    )
-    hass.services.async_register(DOMAIN, "decision", handle_decision)
+    if not hass.services.has_service(DOMAIN, "retrain"):
+        hass.services.async_register(
+            DOMAIN,
+            "retrain",
+            handle_retrain,
+            schema=vol.Schema({vol.Optional("force", default=False): cv.boolean}),
+        )
+    if not hass.services.has_service(DOMAIN, "decision"):
+        hass.services.async_register(DOMAIN, "decision", handle_decision)
 
     config_entry.async_on_unload(config_entry.add_update_listener(_async_update_listener))
     config_entry.async_on_unload(coordinator.async_unload_listeners)

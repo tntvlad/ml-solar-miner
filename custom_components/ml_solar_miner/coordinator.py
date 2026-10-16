@@ -9,9 +9,14 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .const import (
     BATTERY_SOC_MIN,
+    BATTERY_EFFICIENCY_MAX,
+    BATTERY_EFFICIENCY_MIN,
     CONF_AUTO_CONTROL,
     CONF_BATTERY_CAPACITY_ENTITY,
     CONF_BATTERY_CAPACITY_KWH,
+    CONF_BATTERY_EFFICIENCY,
+    CONF_CAPACITY_AUTOTUNE,
+    CONF_EMERGENCY_LOCK_ENTITY,
     CONF_GRID_INVERT,
     CONF_MINER_POWER_NUMBER,
     CONF_MINER_SWITCH,
@@ -22,6 +27,9 @@ from .const import (
     CONF_TARGET_SOC_ENTITY,
     CONF_TARGET_SOC_MORNING,
     DEFAULT_BATTERY_CAPACITY_KWH,
+    DEFAULT_BATTERY_EFFICIENCY,
+    DEFAULT_CAPACITY_AUTOTUNE,
+    DEFAULT_EMERGENCY_LOCK_ENTITY,
     DEFAULT_MIN_SAMPLES_FOR_MODEL,
     DEFAULT_MODEL_TYPE,
     DEFAULT_RETRAIN_INTERVAL,
@@ -33,15 +41,23 @@ from .const import (
     ENGINE_RULE,
     GRID_IMPORT_RETRAIN_MINUTES,
     GRID_IMPORT_RETRAIN_W,
+    LEARNED_CAPACITY_FILENAME,
     MINER_POWER_MIN,
     MISSED_SURPLUS_MINUTES,
     MISSED_SURPLUS_W,
+    ML_DATA_DIR,
+    ML_FEATURE_NAMES,
     MODEL_SHADOW_DAYS,
     RETRAIN_EVENT_COOLDOWN_SECONDS,
     SENSOR_STATE_KEYS,
     WEEKLY_RETRAIN_HOUR,
     WEEKLY_RETRAIN_WEEKDAY,
     get_entry_value,
+)
+from .capacity_estimator import (
+    CapacityEstimator,
+    load_capacity_state,
+    save_capacity_state,
 )
 from . import rule_engine
 from .models import (
@@ -95,6 +111,14 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
         self._grid_high_since: datetime | None = None
         self._surplus_missed_since: datetime | None = None
         self._last_auto_retrain: datetime | None = None
+        self._last_target_soc: float | None = None
+        self._last_capacity_kwh: float | None = None
+        self._missing_logged: set[str] = set()
+        # Battery capacity auto-tune (see capacity_estimator.py)
+        self.capacity_autotune = DEFAULT_CAPACITY_AUTOTUNE
+        self.battery_efficiency = DEFAULT_BATTERY_EFFICIENCY / 100.0
+        self.learned_capacity_kwh: float | None = None
+        self.capacity_estimator: CapacityEstimator | None = None
         self.apply_config(config_entry)
 
     def apply_config(self, config_entry) -> None:
@@ -129,6 +153,33 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
         self.battery_capacity_entity = get_entry_value(
             config_entry, CONF_BATTERY_CAPACITY_ENTITY, None
         )
+        self.emergency_lock_entity = get_entry_value(
+            config_entry,
+            CONF_EMERGENCY_LOCK_ENTITY,
+            DEFAULT_EMERGENCY_LOCK_ENTITY,
+        )
+
+        # Capacity auto-tune: the estimator is (re)created when the feature is
+        # switched on so a stale in-progress window is not carried over.
+        self.capacity_autotune = bool(
+            get_entry_value(
+                config_entry, CONF_CAPACITY_AUTOTUNE, DEFAULT_CAPACITY_AUTOTUNE
+            )
+        )
+        self.battery_efficiency = _clamp_efficiency(
+            get_entry_value(
+                config_entry, CONF_BATTERY_EFFICIENCY, DEFAULT_BATTERY_EFFICIENCY
+            )
+        )
+        if self.capacity_autotune:
+            if self.capacity_estimator is None:
+                self.capacity_estimator = CapacityEstimator(
+                    efficiency=self.battery_efficiency
+                )
+            else:
+                self.capacity_estimator.efficiency = self.battery_efficiency
+        else:
+            self.capacity_estimator = None
 
         self.entity_map = {
             key: config_entry.data.get(key) for key in SENSOR_STATE_KEYS
@@ -152,6 +203,16 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
         )
         if persisted_decision:
             self.last_decision = persisted_decision
+
+        persisted_capacity = await self.hass.async_add_executor_job(
+            load_capacity_state, self._learned_capacity_path()
+        )
+        if persisted_capacity:
+            value = persisted_capacity.get("capacity_kwh")
+            if value is not None:
+                self.learned_capacity_kwh = float(value)
+            if self.capacity_estimator is not None:
+                self.capacity_estimator.restore_windows(persisted_capacity)
 
         last = parse_iso_datetime(self.metrics.get("last_retrain"))
         if last:
@@ -195,6 +256,7 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
     async def _check_retrain_triggers(self, now: datetime) -> None:
         """Event-driven and interval-based retraining."""
         state = await self._read_entity_states()
+        missing = state.get("_missing", set())
         grid_power_raw = state.get("grid_power") or 0
         grid_import = grid_import_watts(apply_grid_sign(grid_power_raw, self.grid_invert))
         soc = float(state.get("battery_soc") or 0)
@@ -212,7 +274,7 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
         else:
             self._grid_high_since = None
 
-        if soc < BATTERY_SOC_MIN and miner_on:
+        if soc < BATTERY_SOC_MIN and miner_on and "battery_soc" not in missing:
             reason = "soc_safety"
 
         if surplus > MISSED_SURPLUS_W and not miner_on:
@@ -255,6 +317,7 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
             return
 
         state = await self._read_entity_states()
+        missing = state.get("_missing", set())
         soc = float(state.get("battery_soc") or 0)
         grid_power_raw = state.get("grid_power") or 0
         grid_import = grid_import_watts(apply_grid_sign(grid_power_raw, self.grid_invert))
@@ -266,7 +329,10 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
         should_kill = False
         reason = ""
 
-        if soc < BATTERY_SOC_MIN:
+        if "battery_soc" in missing:
+            should_kill = True
+            reason = "Watchdog: battery SoC sensor unavailable"
+        elif soc < BATTERY_SOC_MIN:
             should_kill = True
             reason = f"Watchdog: SoC {soc:.0f}% below minimum {BATTERY_SOC_MIN}%"
         elif grid_import > GRID_IMPORT_RETRAIN_W:
@@ -281,10 +347,19 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
                     {"entity_id": self.miner_switch},
                     blocking=True,
                 )
-                # Record the watchdog event
+                # Record the watchdog event, refreshing timestamp/source so the
+                # last-decision sensor reflects *this* safety trip.
                 if self.last_decision:
-                    self.last_decision["mode"] = "safety_shutdown"
-                    self.last_decision["reason"] = reason
+                    self.last_decision.update(
+                        {
+                            "miner_active": "off",
+                            "miner_power": MINER_POWER_MIN,
+                            "mode": "safety_shutdown",
+                            "reason": reason,
+                            "source": "watchdog",
+                            "timestamp": utc_now_iso(),
+                        }
+                    )
                 else:
                     self.last_decision = {
                         "miner_active": "off",
@@ -294,6 +369,9 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
                         "source": "watchdog",
                         "timestamp": utc_now_iso(),
                     }
+                await self.hass.async_add_executor_job(
+                    save_last_decision, self.hass_config_path, self.last_decision
+                )
                 self.async_update_listeners()
             except Exception as err:
                 _LOGGER.error("Watchdog failed to turn off miner: %s", err)
@@ -302,6 +380,25 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
         """Run ML decision cycle. Called every scan_interval."""
         try:
             state = await self._read_entity_states()
+
+            # Feed the power balance into the capacity estimator before the
+            # early-exit checks: the estimator only needs SoC + balance, and it
+            # decides for itself whether the sample is usable.
+            await self._update_capacity_estimate(state)
+
+            missing = state.get("_missing", set())
+            if "battery_soc" in missing:
+                # Without a trustworthy SoC we cannot make a safe decision, and
+                # a fake "SoC 0%" row would poison the training data. Fail safe
+                # (hold the miner off), record why, and skip this cycle.
+                await self._handle_missing_critical_sensor(state)
+                return self.last_decision or {}
+
+            if self._emergency_lock_active():
+                # User (or the emergency automation) locked mining: hold off and
+                # skip this cycle, exactly like the legacy engine's condition.
+                await self._handle_emergency_lock()
+                return self.last_decision or {}
 
             decision = await self.hass.async_add_executor_job(
                 self._run_decision, state
@@ -330,16 +427,18 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"ML decision cycle failed: {err}") from err
 
     async def _read_entity_states(self) -> dict:
-        """Build state dict from configured HA entity IDs."""
-        state = {}
+        """Build state dict from configured HA entity IDs.
+
+        Unavailable inputs fall back to a safe default, but are also collected
+        in ``state["_missing"]`` so the decision cycle can refuse to act on
+        incomplete data instead of fabricating a decision.
+        """
+        state: dict = {}
+        missing: set[str] = set()
+
         for key, entity_id in self.entity_map.items():
             if not entity_id:
-                if key == "miner_is_on":
-                    state[key] = "off"
-                elif key == "hours_until_sunrise":
-                    state[key] = None
-                else:
-                    state[key] = 0.0
+                state[key] = self._default_state_value(key)
                 continue
 
             ent = self.hass.states.get(entity_id)
@@ -350,28 +449,110 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
                     else:
                         state[key] = float(ent.state)
                 except (ValueError, TypeError):
-                    state[key] = "off" if key == "miner_is_on" else 0.0
+                    state[key] = self._default_state_value(key)
+                    missing.add(key)
             else:
-                if key == "miner_is_on":
-                    state[key] = "off"
-                elif key == "hours_until_sunrise":
-                    state[key] = None
-                else:
-                    state[key] = 0.0
-                if ent:
-                    _LOGGER.warning(
-                        "Entity %s is %s, using default", entity_id, ent.state
-                    )
-                else:
-                    _LOGGER.warning("Entity %s not found, using default", entity_id)
+                state[key] = self._default_state_value(key)
+                missing.add(key)
+
+        self._log_missing_transitions(missing)
 
         # Optional dashboard helpers used by the rule engine: the morning target
         # SoC and the battery capacity can be read live from input_number
         # entities instead of the static options.
         state["_target_soc_entity"] = self._read_entity_value(self.target_soc_entity)
         state["_capacity_entity"] = self._read_entity_value(self.battery_capacity_entity)
+        state["_missing"] = missing
 
         return state
+
+    @staticmethod
+    def _default_state_value(key: str):
+        """Safe default for an input whose entity is missing or unavailable."""
+        if key == "miner_is_on":
+            return "off"
+        if key == "hours_until_sunrise":
+            return None
+        return 0.0
+
+    def _log_missing_transitions(self, missing: set[str]) -> None:
+        """Log unavailable inputs only when the set changes (no per-tick spam)."""
+        appeared = missing - self._missing_logged
+        recovered = self._missing_logged - missing
+        for key in sorted(appeared):
+            _LOGGER.warning(
+                "Input '%s' (%s) is unavailable — using default until it recovers",
+                key,
+                self.entity_map.get(key) or "not configured",
+            )
+        for key in sorted(recovered):
+            _LOGGER.info("Input '%s' recovered", key)
+        self._missing_logged = set(missing)
+
+    def _emergency_lock_active(self) -> bool:
+        """Return True while the configured emergency lock helper is on."""
+        entity_id = self.emergency_lock_entity
+        return bool(entity_id) and self.hass.states.is_state(entity_id, "on")
+
+    async def _hold_miner_off(self, mode: str, reason: str) -> None:
+        """Turn the miner off (if controlled) and record why.
+
+        Deliberately does not append a training row: a held-off cycle is not a
+        decision the model should learn from.
+        """
+        if self.auto_control and self.hass.states.is_state(self.miner_switch, "on"):
+            try:
+                await self.hass.services.async_call(
+                    "switch",
+                    "turn_off",
+                    {"entity_id": self.miner_switch},
+                    blocking=True,
+                )
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.error("Failed to hold miner off: %s", err)
+
+        update = {
+            "miner_active": "off",
+            "miner_power": MINER_POWER_MIN,
+            "mode": mode,
+            "reason": reason,
+            "source": "safety",
+            "timestamp": utc_now_iso(),
+        }
+        if self.last_decision:
+            self.last_decision.update(update)
+        else:
+            self.last_decision = {
+                "target_soc_by_sunrise": int(self.target_soc_morning),
+                **update,
+            }
+        await self.hass.async_add_executor_job(
+            save_last_decision, self.hass_config_path, self.last_decision
+        )
+        self.async_update_listeners()
+
+    async def _handle_missing_critical_sensor(self, state: dict) -> None:
+        """Fail safe when a critical sensor is unavailable.
+
+        The engines have no trustworthy SoC here, so rather than decide from
+        zeros (which would also write a bogus training row) we hold the miner
+        off and record the reason. Mirrors the legacy safety watchdog.
+        """
+        await self._hold_miner_off(
+            "sensor_unavailable",
+            "Battery SoC sensor unavailable — miner held off",
+        )
+
+    async def _handle_emergency_lock(self) -> None:
+        """Hold the miner off while the emergency lock helper is on.
+
+        Mirrors the legacy decision-engine condition on
+        ``input_boolean.emergency_battery_lock``.
+        """
+        await self._hold_miner_off(
+            "emergency_lock",
+            f"Emergency battery lock ({self.emergency_lock_entity}) is on — miner held off",
+        )
 
     def _read_entity_value(self, entity_id: str | None) -> float | None:
         """Read a numeric value from an optional helper entity."""
@@ -386,18 +567,142 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
             return None
 
     def _resolve_capacity_kwh(self, state: dict) -> float:
-        """Battery capacity: live helper entity when set, else the option."""
+        """Battery capacity: learned value, live helper, last known, else option."""
+        if self.capacity_autotune and self.learned_capacity_kwh:
+            return float(self.learned_capacity_kwh)
         value = state.get("_capacity_entity")
-        if value is None or value <= 0:
-            return float(self.battery_capacity_kwh)
-        return float(value)
+        if value is not None and value > 0:
+            self._last_capacity_kwh = float(value)
+            return float(value)
+        if self._last_capacity_kwh is not None:
+            return float(self._last_capacity_kwh)
+        return float(self.battery_capacity_kwh)
+
+    def _learned_capacity_path(self) -> str:
+        """Absolute path of the persisted learned-capacity state file."""
+        return self.hass_config_path(ML_DATA_DIR, LEARNED_CAPACITY_FILENAME)
+
+    @property
+    def capacity_status(self) -> str:
+        """Human-readable state of the capacity auto-tune feature."""
+        if not self.capacity_autotune or self.capacity_estimator is None:
+            return "disabled"
+        if self.learned_capacity_kwh is None or not self.capacity_estimator.ready:
+            return "learning"
+        return "applied"
+
+    def _balance_power_w(self, state: dict) -> float:
+        """Whole-system battery power estimate (positive = charging).
+
+        Uses solar + grid import - load rather than the measured battery
+        current, because the parallel DIY banks are not individually metered.
+        """
+        solar = _as_float(state.get("solar_power_total"), 0.0)
+        load = abs(_as_float(state.get("total_load_power"), 0.0))
+        grid = apply_grid_sign(
+            _as_float(state.get("grid_power"), 0.0), self.grid_invert
+        )
+        return solar + grid - load
+
+    async def _update_capacity_estimate(self, state: dict) -> None:
+        """Feed one sample into the capacity estimator and apply any result."""
+        if not self.capacity_autotune or self.capacity_estimator is None:
+            return
+
+        missing = state.get("_missing", set())
+        required = (
+            "battery_soc",
+            "solar_power_total",
+            "total_load_power",
+            "grid_power",
+        )
+        if any(not self.entity_map.get(key) for key in required):
+            return
+        if any(key in missing for key in required):
+            return
+        soc = state.get("battery_soc")
+        if soc is None:
+            return
+
+        window = self.capacity_estimator.add_sample(
+            utc_now(), float(soc), self._balance_power_w(state)
+        )
+        if window is None:
+            return
+
+        baseline = self._resolve_capacity_kwh(state)
+        candidate = self.capacity_estimator.accept(window, baseline)
+
+        # Persist even a rejected-window append so a restart keeps the count.
+        await self._persist_capacity()
+
+        if candidate is None:
+            return
+
+        self.learned_capacity_kwh = candidate
+        _LOGGER.info(
+            "Battery capacity auto-tuned to %.1f kWh from %d windows "
+            "(latest %s %.1f kWh %.0f->%.0f%%, %.0f min)",
+            candidate,
+            self.capacity_estimator.window_count,
+            window.direction,
+            window.estimate_kwh,
+            window.soc_start,
+            window.soc_end,
+            window.duration_min,
+        )
+        await self._mirror_capacity_to_helper(candidate)
+
+    async def _persist_capacity(self) -> None:
+        """Persist the learned capacity and window history."""
+        if self.capacity_estimator is None:
+            return
+        payload = {
+            **self.capacity_estimator.to_dict(),
+            "capacity_kwh": self.learned_capacity_kwh,
+            "updated": utc_now_iso(),
+        }
+        await self.hass.async_add_executor_job(
+            save_capacity_state, self._learned_capacity_path(), payload
+        )
+
+    async def _mirror_capacity_to_helper(self, value: float) -> None:
+        """Write the learned capacity back to the configured helper entity."""
+        entity_id = self.battery_capacity_entity
+        if not entity_id:
+            return
+        if entity_id.startswith("input_number."):
+            domain = "input_number"
+        elif entity_id.startswith("number."):
+            domain = "number"
+        else:
+            return
+        try:
+            await self.hass.services.async_call(
+                domain,
+                "set_value",
+                {"entity_id": entity_id, "value": round(float(value), 1)},
+                blocking=True,
+            )
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning(
+                "Could not write learned capacity to %s: %s", entity_id, err
+            )
 
     def _resolve_target_soc(self, state: dict) -> float:
-        """Morning target SoC: live helper entity when set, else the option."""
+        """Morning target SoC: live helper, else last known, else the option.
+
+        Mirrors the legacy script's ``last_target.json`` behaviour: an
+        unavailable helper must not silently reset the target to the static
+        default while the user's dashboard value is momentarily unreadable.
+        """
         value = state.get("_target_soc_entity")
-        if value is None:
-            return float(self.target_soc_morning)
-        return float(value)
+        if value is not None:
+            self._last_target_soc = float(value)
+            return float(value)
+        if self._last_target_soc is not None:
+            return float(self._last_target_soc)
+        return float(self.target_soc_morning)
 
     def _run_decision(self, state: dict) -> dict:
         """Synchronous decision — runs in executor thread."""
@@ -442,9 +747,19 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
                 prev_miner_active = "off"
 
             if model_ready:
-                import numpy as np
-
-                predicted_power = int(self._model.predict(np.array([features]))[0])
+                residual = self._model.predict_one(
+                    dict(zip(ML_FEATURE_NAMES, features))
+                )
+                # The model is trained on the residual versus the rule teacher,
+                # so the teacher power must be added back for the final power.
+                teacher = rule_teacher(
+                    features,
+                    self._resolve_capacity_kwh(state),
+                    prev_miner_active=prev_miner_active,
+                )
+                predicted_power = int(
+                    float(teacher["miner_power"]) + float(residual or 0)
+                )
                 mode = (
                     "day_solar"
                     if _as_float(state.get("solar_power_total"), 0) > 100
@@ -570,7 +885,26 @@ class MLSolarMinerCoordinator(DataUpdateCoordinator):
             "training_samples": self.training_samples,
             "model_loaded": self._model is not None,
             "metrics": self.metrics,
+            "capacity_autotune": self.capacity_autotune,
+            "capacity_status": self.capacity_status,
+            "battery_efficiency": self.battery_efficiency,
+            "learned_capacity_kwh": self.learned_capacity_kwh,
+            "capacity_windows": (
+                self.capacity_estimator.window_count
+                if self.capacity_estimator is not None
+                else 0
+            ),
         }
+
+
+def _clamp_efficiency(value) -> float:
+    """Return a one-way efficiency fraction from a percent option."""
+    try:
+        percent = float(value)
+    except (TypeError, ValueError):
+        return DEFAULT_BATTERY_EFFICIENCY / 100.0
+    percent = min(max(percent, BATTERY_EFFICIENCY_MIN), BATTERY_EFFICIENCY_MAX)
+    return percent / 100.0
 
 
 def _as_float(value, default: float = 0.0) -> float:

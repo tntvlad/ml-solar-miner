@@ -9,7 +9,7 @@
   "iot_class": "calculated",
   "issue_tracker": "https://github.com/tntvlad/ml-solar-miner/issues",
   "loggers": ["custom_components.ml_solar_miner"],
-  "requirements": [],
+  "requirements": ["river==0.26.1"],
   "single_config_entry": true,
-  "version": "1.2.0"
+  "version": "1.4.0"
 }

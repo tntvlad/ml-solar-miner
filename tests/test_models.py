@@ -529,7 +529,7 @@ def test_reward_zero_rows_are_kept_for_training() -> None:
 # ---------------------------------------------------------------------------
 
 def test_force_retrain_bypasses_sample_floor(tmp_path: Path) -> None:
-    pytest.importorskip("sklearn")
+    pytest.importorskip("river")
     def hass_config_path(*parts):
         return str(tmp_path.joinpath(*parts))
 
@@ -573,7 +573,7 @@ def test_force_retrain_bypasses_sample_floor(tmp_path: Path) -> None:
 
 
 def test_retrain_with_reward_floor_filters_bad_rows(tmp_path: Path) -> None:
-    pytest.importorskip("sklearn")
+    pytest.importorskip("river")
     def hass_config_path(*parts):
         return str(tmp_path.joinpath(*parts))
 
